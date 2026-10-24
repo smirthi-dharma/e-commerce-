@@ -4,7 +4,9 @@ A mobile-first React/Vite storefront with a Django REST API for an Indian superm
 
 ## Storefront design direction
 
-The visual direction is an original green-and-white grocery shopping experience: mobile-first navigation, clear aisles and search, responsive product cards, quick add-to-bag actions, and a separate role-aware administration workspace. These sources inform general e-commerce and grocery usability; the implementation uses original components, copy, and styling:
+The Pandiyan Stores storefront uses a mobile-first, product-led Diwali home, compact department navigation, and category-specific themes across groceries, clothing, toiletries, and perfumes. The homepage currently uses a clearly labelled visual demo with a separate demo basket and disabled checkout. Category photos are permanent assets. The existing catalogue and real-cart routes remain separate. See [the release notes](RELEASE_NOTES.md) for shipped changes, verification, migrations, and deployment limits.
+
+The supplied Blinkit app recording and these sources inform general e-commerce usability; the implementation uses original components, copy, and styling:
 
 - [Shopify store examples](https://www.shopify.com/in/examples)
 - [Simicart grocery app design](https://simicart.com/templates/grocery-app-design/)
@@ -94,7 +96,7 @@ The Account page links to orders, referral rewards, questions, saved addresses, 
 
 ## Store policy pages
 
-The storefront provides `/terms-and-conditions`, `/privacy-policy`, `/delivery-policy`, `/return-refund-policy`, and `/ugc-policy`. Policy links open a compact, scrollable dialog with a close button; the routes remain directly accessible and refreshable. Policy prose is managed in the existing admin store-information JSON (`terms`, `privacy_policy`, `return_policy`, and `ugc_policy`); authorized Senior Admins and managers explicitly granted the `blogs` module can edit it. Saving publishes immediately. The existing store-information model has no policy-specific approval status or revision history. Delivery charges, PIN codes, minimum order, operating hours, and estimated delivery timeline are read from authorized system settings; the default 6–24 hour estimate is subject to actual operations.
+The storefront provides `/terms-and-conditions`, `/privacy-policy`, `/delivery-policy`, `/return-refund-policy`, and `/ugc-policy`. Policy links open a compact, scrollable dialog with a close button; the routes remain directly accessible and refreshable. Policy prose is managed in the existing admin store-information JSON (`terms`, `privacy_policy`, `return_policy`, and `ugc_policy`); authorized Senior Admins and managers explicitly granted the `blogs` module can edit it. Saving publishes immediately. The existing store-information model has no policy-specific approval status or revision history. Delivery charges, PIN codes, minimum order, operating hours, and estimated delivery timeline are read from authorized system settings; the default 30-minute estimate is subject to actual operations.
 
 The policy pages are marked as drafts until owner/legal review. The owner-supplied Terms, Privacy and Refund text is included in the page drafts, with implementation-dependent privacy and payment statements qualified to match the current site. The proposed broad UGC licence is displayed as inactive pending approval. Before considering the text final, the owner must resolve the 14-day versus 30-day general return period, the start of the 24-hour perishable and 48-hour damaged-item periods, UGC licence scope/duration, dispute jurisdiction and liability wording, privacy/deletion/tracking claims, and COD refund method/timing. No legal approval or compliance claim is implied.
 
