@@ -337,21 +337,7 @@ def change_order_status(*, order, new_status, actor=None, expected_version=None)
                 quantity=movement.quantity,
                 cycle=order.fulfilment_cycle,
             )
-    from apps.referrals.models import ReferralProgram
-
-    referral_program = ReferralProgram.objects.filter(pk=1).first()
-    if referral_program and new_status in referral_program.qualifying_order_statuses:
-        from apps.referrals.services import award_referral_for_order
-
-        award_referral_for_order(order)
-    if referral_program and new_status == Order.Status.CANCELLED:
-        from apps.referrals.services import reverse_referral_rewards_for_order
-
-        reverse_referral_rewards_for_order(order, reason="qualifying order cancelled")
-    if new_status == Order.Status.DELIVERED:
-        from apps.customer_services.services import issue_reseller_commission
-
-        issue_reseller_commission(order)
+    apply_purchase_rules(order)
     event_kind = (
         "customer_cancelled"
         if new_status == Order.Status.CANCELLED and actor and not actor.is_staff
@@ -501,3 +487,64 @@ def reopen_order(*, order, actor, expected_version=None):
         },
     )
     return order
+
+
+def apply_purchase_rules(order):
+    from apps.referrals.models import ReferralProgram
+
+    referral_program = ReferralProgram.objects.filter(pk=1).first()
+    if referral_program and order.status in referral_program.qualifying_order_statuses:
+        from apps.referrals.services import award_referral_for_order
+
+        award_referral_for_order(order)
+    if referral_program and order.status == Order.Status.CANCELLED:
+        from apps.referrals.services import reverse_referral_rewards_for_order
+
+        reverse_referral_rewards_for_order(order, reason="qualifying order cancelled")
+    if order.status == Order.Status.DELIVERED:
+        from apps.customer_services.services import issue_reseller_commission
+
+        issue_reseller_commission(order)
+
+@transaction.atomic
+def record_in_store_purchase(*, actor, payload):
+    from datetime import datetime, time
+    from django.db import IntegrityError
+    from rest_framework.exceptions import PermissionDenied
+    from apps.accounts.models import User
+    from apps.catalog.permissions import allowed_admin_module
+    from apps.customer_services.models import AdminAuditEntry, PaymentTransaction, PaymentEvent
+    from .serializers import InStorePurchaseSerializer
+
+    if not (actor.is_active and actor.is_staff and allowed_admin_module(actor, "orders")):
+        raise PermissionDenied("Order administrator access is required.")
+    serializer = InStorePurchaseSerializer(data=payload)
+    serializer.is_valid(raise_exception=True)
+    data = serializer.validated_data
+    bill = data['bill_number']
+    if Order.objects.filter(bill_number=bill).exists():
+        raise ValidationError({'bill_number': 'This bill has already been recorded.'})
+    try:
+        with transaction.atomic():
+            if 'customer_id' in data:
+                customer = User.objects.select_for_update().filter(pk=data['customer_id'], role='customer', is_active=True).first()
+                if not customer:
+                    raise ValidationError({'customer_id': 'Active customer not found.'})
+            else:
+                details = data['customer']
+                names = details['full_name'].split(maxsplit=1)
+                customer = User.objects.create_user(email=details['email'], phone=details['phone'], first_name=names[0], last_name=names[1] if len(names) > 1 else '')
+                AdminAuditEntry.objects.create(actor=actor, action='create', resource='accounts.user', object_id=str(customer.pk), changes={'source': 'in_store'})
+            order = Order.objects.create(customer=customer, customer_name=customer.get_full_name(), phone=customer.phone, address='', subtotal=data['amount'], total=data['amount'], source='in_store', bill_number=bill, purchase_date=data['purchase_date'], payment_method='in_store', payment_status='paid', status='delivered')
+            # Existing history, qualification and sales reports use created_at as the purchase timestamp.
+            purchased_at = timezone.make_aware(datetime.combine(data['purchase_date'], time.min))
+            Order.objects.filter(pk=order.pk).update(created_at=purchased_at)
+            order.created_at = purchased_at
+            payment = PaymentTransaction.objects.create(order=order, method='in_store', status='successful', amount=order.total, transaction_reference=f'in-store:{bill}')
+            PaymentEvent.objects.create(transaction=payment, event_type='in_store_recorded', reference=bill, details={'actor_id': actor.pk})
+            OrderStatusEvent.objects.create(order=order, status='delivered', kind='in_store_recorded', actor=actor)
+            AdminAuditEntry.objects.create(actor=actor, action='in_store_purchase', resource='orders.order', object_id=str(order.pk), changes={'customer_id': customer.pk, 'bill_number': bill, 'purchase_date': str(order.purchase_date), 'amount': str(order.total), 'source': 'in_store'})
+            apply_purchase_rules(order)
+            return order
+    except IntegrityError:
+        raise ValidationError({'detail': 'Bill number, customer email or phone already exists. Refresh and select the existing record.'})
