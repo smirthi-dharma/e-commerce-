@@ -77,6 +77,18 @@ class CommerceFlowTests(APITestCase):
         self.assertFalse(Order.objects.exists())
         self.assertEqual(WalletLedger.objects.count(),1)
 
+    def test_retry_recovers_original_order_after_quoted_wallet_was_spent(self):
+        program=ReferralProgram.current();program.wallet_spending_enabled=True;program.save()
+        WalletLedger.objects.create(customer=self.customer,amount=50,transaction_type='credit')
+        payload={**self.payload,'use_wallet':True,'checkout_key':'a4e29042-ef37-45f9-9bb1-01bacf047637','expected_total':'380','expected_wallet_amount':'50'}
+        first=self.client.post('/api/v1/orders/',payload,format='json')
+        retry=self.client.post('/api/v1/orders/',payload,format='json')
+        self.assertEqual(first.status_code,201)
+        self.assertEqual(retry.status_code,201)
+        self.assertEqual(first.data['id'],retry.data['id'])
+        self.assertEqual(Order.objects.count(),1)
+        self.assertEqual(WalletLedger.objects.filter(transaction_type='redemption').count(),1)
+
     def test_sell_by_date_hides_inventory_and_blocks_checkout(self):
         self.product.best_before=timezone.localdate()-timedelta(days=1);self.product.save()
         self.assertEqual(self.client.get('/api/v1/products/').data['count'],0)

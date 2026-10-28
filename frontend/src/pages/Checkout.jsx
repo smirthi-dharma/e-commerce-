@@ -111,7 +111,7 @@ export default function Checkout() {
       .then(({ data }) => { if (!controller.signal.aborted) setQuote(data) })
       .catch(exception => { if (!controller.signal.aborted) setQuoteError(errorMessage(exception)) }), 350)
     return () => { clearTimeout(timer); controller.abort() }
-  }, [quoteSignature, quoteRetry])
+  }, [quoteSignature, quoteRetry, subtotal])
 
   const submit = async (event) => {
     event.preventDefault()
@@ -134,7 +134,12 @@ export default function Checkout() {
       const { data } = await api.post('/orders/', { ...payload, checkout_key: checkoutAttempt.current.key })
       clear()
       navigate(`/orders/${data.id}?placed=1`)
-    } catch (e) { setError(errorMessage(e)); setQuoteRetry(value => value + 1) } finally { setBusy(false); sending.current = false }
+    } catch (e) {
+      setError(errorMessage(e))
+      // Preserve the original quote/key after an uncertain network outcome so retry
+      // recovers the existing order instead of recomputing an already-spent wallet.
+      if (e.response?.status === 400) setQuoteRetry(value => value + 1)
+    } finally { setBusy(false); sending.current = false }
   }
 
   if (!items.length) return <section className="wrap section"><div className="empty-state"><h2>Your basket is empty</h2><p>Add something before checking out.</p><button className="button primary" onClick={() => navigate('/products')}>Browse products</button></div></section>
