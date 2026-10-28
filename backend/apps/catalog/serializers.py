@@ -12,13 +12,13 @@ IMAGE_SIGNATURES = {
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        fields = ["id", "name", "slug", "is_active", "referral_rewards_enabled"]
+        fields = ["id", "name", "slug", "image_url", "is_active", "referral_rewards_enabled"]
 
 
 class PublicCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        fields = ["id", "name", "slug", "is_active"]
+        fields = ["id", "name", "slug", "image_url", "is_active"]
 
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -26,10 +26,24 @@ class ProductSerializer(serializers.ModelSerializer):
     in_stock = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
     display_badge = serializers.SerializerMethodField()
+    variants = serializers.SerializerMethodField()
+
+    def get_variants(self, obj):
+        if not obj.variant_group or not self.context.get("detail"):
+            return []
+        from .availability import sale_date_filter
+        return list(Product.objects.filter(sale_date_filter(), variant_group=obj.variant_group, is_active=True, category__is_active=True, stock__gt=0).order_by("price").values("id", "name", "pack_size", "price"))
+
+    def validate_gallery(self, value):
+        if not isinstance(value, list) or len(value) > 8:
+            raise serializers.ValidationError("Provide at most eight image URLs.")
+        validator = serializers.URLField()
+        return [validator.run_validation(url) for url in value]
+
 
     class Meta:
         model = Product
-        fields = ["id", "name", "slug", "sku", "description", "pack_size", "price", "regular_price", "mrp", "mrp_is_sample", "badge", "display_badge", "image_is_illustration", "stock", "in_stock", "image_url", "is_active", "is_featured", "category", "category_name"]
+        fields = ["id", "name", "slug", "sku", "description", "pack_size", "price", "regular_price", "mrp", "mrp_is_sample", "badge", "display_badge", "image_is_illustration", "stock", "in_stock", "image_url", "is_active", "is_featured", "category", "category_name", "brand", "variant_group", "search_keywords", "unit_price_label", "ingredients", "nutrition", "storage_instructions", "gallery", "variants"]
 
     def validate(self, attrs):
         price = attrs.get("price", getattr(self.instance, "price", None))
@@ -62,7 +76,8 @@ class ProductSerializer(serializers.ModelSerializer):
         return obj.get_badge_display() if sales_badge_supported(obj, obj.badge) else ""
 
     def get_in_stock(self, obj) -> bool:
-        return obj.stock > 0 and obj.is_active and obj.category.is_active
+        from django.utils import timezone
+        return obj.stock > 0 and obj.is_active and obj.category.is_active and (obj.best_before is None or obj.best_before >= timezone.localdate())
 
     def get_image_url(self, obj) -> str:
         if obj.image_data:
@@ -83,7 +98,7 @@ class AdminProductSerializer(ProductSerializer):
     remove_image = serializers.BooleanField(required=False, write_only=True)
 
     class Meta(ProductSerializer.Meta):
-        fields = ProductSerializer.Meta.fields + ["barcode", "low_stock_threshold", "image", "remove_image", "wholesale_price"]
+        fields = ProductSerializer.Meta.fields + ["barcode", "low_stock_threshold", "image", "remove_image", "wholesale_price", "best_before"]
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

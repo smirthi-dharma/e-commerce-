@@ -16,6 +16,9 @@ from .permissions import IsStoreAdmin
 from .serializers import AdminProductSerializer, CategorySerializer, ProductSerializer, PublicCategorySerializer
 
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
+    def get_queryset(self):
+        from .availability import sale_date_filter
+        return super().get_queryset().filter(Exists(Product.objects.filter(category_id=OuterRef("pk"), is_active=True, stock__gt=0).filter(sale_date_filter())))
     queryset = Category.objects.filter(
         is_active=True,
     ).filter(
@@ -50,14 +53,43 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ProductSerializer
     permission_classes = [permissions.AllowAny]
     pagination_class = ProductPagination
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     search_fields = ["name", "description", "category__name"]
     ordering_fields = ["name", "price"]
-    ordering = ["name"]
-    filterset_fields = ["category", "is_featured"]
+    ordering = ["-is_featured", "name", "pk"]
+    filterset_fields = ["category", "is_featured", "brand", "variant_group"]
+
+    def get_serializer_context(self):
+        return {**super().get_serializer_context(), "detail": self.action == "retrieve"}
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        response.data["brands"] = list(Product.objects.filter(is_active=True, stock__gt=0, category__is_active=True).exclude(brand="").order_by("brand").values_list("brand", flat=True).distinct()[:100])
+        return response
+
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        from .availability import sale_date_filter
+        queryset = super().get_queryset().filter(sale_date_filter())
+        self.ordering = ["-is_featured", "name", "pk"]
+        query = self.request.query_params.get("search", "").strip()[:200]
+        if query:
+            from .search import search_products
+            queryset = search_products(queryset, query)
+            self.ordering = ["search_rank", "-is_featured", "name", "pk"]
+        collection = self.request.query_params.get("collection")
+        ids = self.request.query_params.get("ids")
+        if ids:
+            selected = [int(value) for value in ids.split(",")[:100] if value.isdigit()]
+            queryset = queryset.filter(pk__in=selected)
+        if collection == "buy-again":
+            if not self.request.user.is_authenticated:
+                return queryset.none()
+            from apps.orders.models import OrderItem
+            purchased = OrderItem.objects.filter(order__customer=self.request.user, order__status="delivered").values("product_id").annotate(units=Sum("quantity")).order_by("-units")[:50]
+            queryset = queryset.filter(pk__in=[row["product_id"] for row in purchased])
+        if collection == "deals":
+            queryset = queryset.filter(Q(mrp_is_sample=False, mrp__gt=F("price")) | Q(regular_price__gt=F("price")))
         if self.request.query_params.get("collection") == "fast-moving":
             from apps.orders.models import OrderItem
             from django.db.models import Subquery, IntegerField
@@ -285,5 +317,11 @@ def dashboard(request):
         })
         response["net_sales"] = gross_sales - response["refund_total"]
         response["recent_orders"] = list(period_orders.order_by("-created_at").values("id", "order_number", "status", "total", "created_at")[:8])
+    from apps.customer_services.models import ShoppingActivity
+    activity = ShoppingActivity.objects.all()
+    if start:
+        activity = activity.filter(created_at__gte=start, created_at__lt=end)
+    from django.db.models import Count
+    response["shopping_activity"] = {row["kind"]:row["count"] for row in activity.values("kind").annotate(count=Count("pk"))}
     response["sales_total"] = response.get("gross_sales", 0)
     return Response(response)

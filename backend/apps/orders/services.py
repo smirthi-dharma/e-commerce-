@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
@@ -7,15 +8,16 @@ from .models import InventoryMovement, Order, OrderItem, OrderStatusEvent
 
 
 @transaction.atomic
-def place_order(*, customer, payload):
+def place_order(*, customer, payload, quote_only=False):
     import hashlib
     import json
     from apps.accounts.models import User
     from apps.referrals.models import ReferralProgram, WalletLedger
     from apps.referrals.wallet import balance
+    from apps.catalog.availability import sale_date_filter
 
     customer = User.objects.select_for_update().get(pk=customer.pk)
-    checkout_key = payload.get("checkout_key")
+    checkout_key = None if quote_only else payload.get("checkout_key")
     fingerprint = hashlib.sha256(
         json.dumps(payload, sort_keys=True, default=str).encode()
     ).hexdigest()
@@ -32,7 +34,7 @@ def place_order(*, customer, payload):
                     }
                 )
             return previous
-    if payload.get("use_wallet") and not checkout_key:
+    if payload.get("use_wallet") and not checkout_key and not quote_only:
         raise ValidationError(
             {"checkout_key": "A checkout key is required for wallet payments."}
         )
@@ -61,6 +63,8 @@ def place_order(*, customer, payload):
             is_active=True,
             category__is_active=True,
         )
+        .order_by("pk")
+        .filter(sale_date_filter())
     }
     if len(products) != len(product_ids):
         raise ValidationError({"items": "One or more products are unavailable."})
@@ -91,13 +95,15 @@ def place_order(*, customer, payload):
     )
 
     settings = SystemSettings.current()
+    if not quote_only:
+        settings = SystemSettings.objects.select_for_update().get(pk=settings.pk)
     pin_code = payload.get("delivery_pin_code", "").strip()
     if not pin_code:
         raise ValidationError({"delivery_pin_code": "Enter a delivery PIN code."})
-    if pin_code not in settings.delivery_pin_codes:
-        raise ValidationError(
-            {"delivery_pin_code": "Delivery is not available for this PIN code."}
-        )
+    from apps.customer_services.operations import delivery_policy, require_delivery
+    policy = delivery_policy(settings, pin_code) if quote_only else require_delivery(settings, pin_code)
+    if pin_code not in policy["delivery_pin_codes"]:
+        raise ValidationError({"delivery_pin_code": "Delivery is not available for this PIN code."})
     coupon = None
     discount = Decimal("0.00")
     code = payload.get("coupon_code", "").strip().upper()
@@ -165,13 +171,13 @@ def place_order(*, customer, payload):
             discount = min(discount, coupon.maximum_discount)
         discount = min(discount.quantize(Decimal("0.01")), eligible_total)
     merchandise_total = max(subtotal - discount, Decimal("0.00"))
-    if merchandise_total < settings.minimum_order_value:
+    if merchandise_total < settings.minimum_order_value and not quote_only:
         raise ValidationError(
             {
                 "items": f"The minimum merchandise order value after discounts is ₹{settings.minimum_order_value}."
             }
         )
-    delivery_fee = settings.delivery_fee
+    delivery_fee = policy["delivery_fee"]
     if (
         settings.free_delivery_threshold is not None
         and merchandise_total > settings.free_delivery_threshold
@@ -192,7 +198,23 @@ def place_order(*, customer, payload):
                 {"use_wallet": "Wallet payments are currently disabled."}
             )
         wallet_amount = min(total, max(Decimal("0.00"), balance(customer)))
+    if quote_only:
+        return {
+            "subtotal": subtotal, "discount_amount": discount, "merchandise_total": merchandise_total,
+            "delivery_fee": delivery_fee, "total": total, "wallet_amount": wallet_amount,
+            "amount_due": total - wallet_amount, "minimum_order_value": settings.minimum_order_value,
+            "remaining_for_minimum": max(Decimal("0"), settings.minimum_order_value - merchandise_total),
+            "eligible": merchandise_total >= settings.minimum_order_value and policy["accepting_orders"],
+            "availability_message": policy["availability_message"],
+            "estimated_minutes_min": policy["estimated_minutes_min"], "estimated_minutes_max": policy["estimated_minutes_max"],
+        }
+    if payload.get("expected_wallet_amount") is not None and payload["expected_wallet_amount"] != wallet_amount:
+        raise ValidationError({"expected_wallet_amount": "Wallet balance changed. Refresh your quote before confirming the payment split."})
+    if payload.get("expected_total") is not None and payload["expected_total"] != total:
+        raise ValidationError({"expected_total": "Prices changed. Refresh your order quote before confirming."})
     order = Order.objects.create(
+        estimated_delivery_at=timezone.now() + timedelta(minutes=policy["estimated_minutes_min"]),
+        estimated_delivery_latest_at=timezone.now() + timedelta(minutes=policy["estimated_minutes_max"]),
         wallet_amount=wallet_amount,
         checkout_key=checkout_key,
         checkout_fingerprint=fingerprint,
@@ -421,6 +443,7 @@ def reopen_order(*, order, actor, expected_version=None):
             not product
             or not product.is_active
             or not product.category.is_active
+            or (product.best_before is not None and product.best_before < timezone.localdate())
             or product.stock < quantities[line.product_id]
         ):
             raise ValidationError(

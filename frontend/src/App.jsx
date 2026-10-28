@@ -1,6 +1,6 @@
-import Categories from './pages/Categories'
-import DemoBasket from './pages/DemoBasket'
-import Wallet from './pages/Wallet'
+const Categories = lazy(() => import('./pages/Categories'))
+const DemoBasket = lazy(() => import('./pages/DemoBasketRoute'))
+const Wallet = lazy(() => import('./pages/Wallet'))
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import { useAuth } from './context/AuthContext'
@@ -8,13 +8,13 @@ import StoreLayout from './layouts/StoreLayout'
 const AdminLayout = lazy(() => import('./layouts/AdminLayout'))
 import Home from './pages/Home'
 import Products from './pages/Products'
-import ProductDetail from './pages/ProductDetail'
+const ProductDetail = lazy(() => import('./pages/ProductDetail'))
 import Cart from './pages/Cart'
-import Checkout from './pages/Checkout'
-import Orders from './pages/Orders'
-import OrderDetail from './pages/OrderDetail'
-import Referral from './pages/Referral'
-import Account from './pages/Account'
+const Checkout = lazy(() => import('./pages/Checkout'))
+const Orders = lazy(() => import('./pages/Orders'))
+const OrderDetail = lazy(() => import('./pages/OrderDetail'))
+const Referral = lazy(() => import('./pages/Referral'))
+const Account = lazy(() => import('./pages/Account'))
 const Admin = lazy(() => import('./pages/Admin'))
 const AdminOrders = lazy(() => import('./pages/AdminOrders'))
 const AdminProducts = lazy(() => import('./pages/AdminProducts'))
@@ -24,10 +24,12 @@ const AdminCustomers = lazy(() => import('./pages/AdminCustomers'))
 const AdminStaff = lazy(() => import('./pages/AdminStaff'))
 const AccountServices = lazy(() => import('./pages/AccountServices'))
 const AdminServices = lazy(() => import('./pages/AdminServices'))
-import { Login, Register } from './pages/AuthPages'
+const Login = lazy(() => import('./pages/AuthPages').then(module => ({ default: module.Login })))
+const Register = lazy(() => import('./pages/AuthPages').then(module => ({ default: module.Register })))
 import { canAccessAdminModule, hasAdminAccess } from './utils/adminAccess'
 
 const PolicyPage = lazy(() => import('./pages/PolicyPage'))
+const ShoppingLists = lazy(() => import('./pages/ShoppingLists'))
 
 function Guard({ admin = false, adminModule, adminRoles, children }) {
   const { user, ready } = useAuth()
@@ -59,6 +61,7 @@ export default function App() {
     <Route path="login" element={<Login />} />
     <Route path="register" element={<Register />} />
     <Route path="account" element={<Account />} />
+    <Route path="account/shopping-lists" element={<Guard><ShoppingLists /></Guard>} />
     <Route path="account/:section" element={<Guard><AccountServices /></Guard>} />
     <Route path="blogs" element={<AccountServices />} />
     <Route path="blogs/:slug" element={<AccountServices />} />

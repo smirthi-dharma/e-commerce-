@@ -4,8 +4,11 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { AuthProvider } from './context/AuthContext'
 import { CartProvider } from './context/CartContext'
-import { DemoBasketProvider } from './context/DemoBasketContext'
 import './styles.css'
+
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}) })
+}
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -15,7 +18,7 @@ createRoot(document.getElementById('root')).render(
     </aside>}
     <BrowserRouter>
       <AuthProvider>
-        <CartProvider><DemoBasketProvider><App /></DemoBasketProvider></CartProvider>
+        <CartProvider><App /></CartProvider>
       </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>,

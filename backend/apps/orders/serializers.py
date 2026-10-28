@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.utils import timezone
 from .models import Order, OrderItem, OrderStatusEvent
 from .services import ORDER_TRANSITIONS
 
@@ -10,6 +11,7 @@ class OrderEventSerializer(serializers.ModelSerializer):
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
+    barcode = serializers.CharField(source="product.barcode", read_only=True, default="")
     image_url = serializers.SerializerMethodField()
 
     def get_image_url(self, obj):
@@ -24,6 +26,10 @@ class OrderItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderItem
         fields = [
+            "id",
+            "picked_quantity",
+            "barcode",
+            "product_id",
             "product_name",
             "sku",
             "unit_price",
@@ -53,6 +59,8 @@ class OrderSerializer(serializers.ModelSerializer):
             "scheduled_at": assignment.scheduled_at,
             "dispatched_at": assignment.dispatched_at,
             "delivered_at": assignment.delivered_at,
+            "shared_location": ({"latitude": assignment.latitude, "longitude": assignment.longitude, "shared_at": assignment.location_shared_at} if obj.status not in {"delivered", "cancelled"} and assignment.latitude is not None and assignment.longitude is not None and assignment.location_shared_at and (timezone.now() - assignment.location_shared_at).total_seconds() <= 300 else None),
+            "personnel_phone": assignment.personnel.phone if assignment.personnel else "",
             "personnel_name": assignment.personnel.name
             if assignment.personnel
             else None,
@@ -82,6 +90,8 @@ class OrderSerializer(serializers.ModelSerializer):
             "order_number",
             "status",
             "status_version",
+            "estimated_delivery_at",
+            "estimated_delivery_latest_at",
             "payment_method",
             "payment_status",
             "customer_name",
@@ -137,6 +147,8 @@ class CheckoutLineSerializer(serializers.Serializer):
 
 
 class CreateOrderSerializer(serializers.Serializer):
+    expected_wallet_amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0, required=False)
+    expected_total = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0, required=False)
     use_wallet = serializers.BooleanField(default=False)
     checkout_key = serializers.UUIDField(required=False)
     items = CheckoutLineSerializer(many=True, allow_empty=False)

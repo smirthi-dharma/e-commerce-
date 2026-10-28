@@ -29,6 +29,8 @@ class Order(models.Model):
     coupon = models.ForeignKey("customer_services.Coupon", null=True, blank=True, related_name="orders", on_delete=models.SET_NULL)
     discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     delivery_pin_code = models.CharField(max_length=6, blank=True)
+    estimated_delivery_at = models.DateTimeField(null=True, blank=True)
+    estimated_delivery_latest_at = models.DateTimeField(null=True, blank=True)
     customer_name = models.CharField(max_length=150)
     phone = models.CharField(max_length=20)
     address = models.TextField()
@@ -54,6 +56,7 @@ class Order(models.Model):
         super().save(*args, **kwargs)
 
 class OrderItem(models.Model):
+    picked_quantity = models.PositiveIntegerField(default=0)
     category_snapshot = models.ForeignKey("catalog.Category", null=True, blank=True, on_delete=models.PROTECT)
     order = models.ForeignKey(Order, related_name="items", on_delete=models.CASCADE)
     product = models.ForeignKey("catalog.Product", null=True, on_delete=models.SET_NULL)
