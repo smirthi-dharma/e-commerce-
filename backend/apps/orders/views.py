@@ -44,6 +44,22 @@ class OrderListCreateView(generics.ListAPIView):
         return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
 
 
+class OrderQuoteView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from rest_framework import serializers
+        from .serializers import CheckoutLineSerializer
+        class QuoteSerializer(serializers.Serializer):
+            items = CheckoutLineSerializer(many=True, allow_empty=False)
+            delivery_pin_code = serializers.RegexField(r"^[1-9][0-9]{5}$")
+            coupon_code = serializers.CharField(required=False, allow_blank=True, max_length=40)
+            use_wallet = serializers.BooleanField(default=False)
+        data = QuoteSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        return Response(place_order(customer=request.user, payload=data.validated_data, quote_only=True))
+
+
 class OrderDetailView(generics.RetrieveAPIView):
     serializer_class = OrderSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -122,6 +138,33 @@ class AdminOrderViewSet(
                 object_id=str(order.pk),
                 changes={"private_note_updated": True},
             )
+        return Response(self.get_serializer(order).data)
+
+    @action(detail=True, methods=["post"])
+    @transaction.atomic
+    def packing(self, request, pk=None):
+        from rest_framework.exceptions import ValidationError
+        order = Order.objects.select_for_update().get(pk=self.get_object().pk)
+        version = RestoreOrderSerializer(data=request.data)
+        version.is_valid(raise_exception=True)
+        check_version(order, version.validated_data["expected_version"])
+        if order.status not in {"pending", "confirmed", "processing"}:
+            raise ValidationError({"detail": "Picking can be updated before the order is packed."})
+        quantities = request.data.get("items")
+        if not isinstance(quantities, list) or len(quantities) > 100:
+            raise ValidationError({"items": "Provide order item quantities."})
+        items = {item.pk:item for item in order.items.all()}
+        seen = set()
+        for row in quantities:
+            if not isinstance(row, dict) or type(row.get("id")) is not int or row["id"] not in items or row["id"] in seen or type(row.get("quantity")) is not int or not 0 <= row["quantity"] <= items[row["id"]].quantity:
+                raise ValidationError({"items": "Invalid order item or quantity."})
+            seen.add(row["id"])
+            item = items[row["id"]]
+            item.picked_quantity = row["quantity"]
+            item.save(update_fields=["picked_quantity"])
+        order.status_version += 1
+        order.save(update_fields=["status_version", "updated_at"])
+        AdminAuditEntry.objects.create(actor=request.user, action="pick_items", resource="orders.order", object_id=str(order.pk), changes={"items": quantities})
         return Response(self.get_serializer(order).data)
 
     @action(detail=True, methods=["post"])

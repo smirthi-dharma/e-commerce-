@@ -1,6 +1,7 @@
 from rest_framework.permissions import BasePermission
 
 ROLE_MODULES = {
+    "delivery_partner": {"delivery"},
     "product_manager": {"products"},
     "inventory_manager": {"products", "inventory"},
     "order_manager": {"orders", "delivery"},
@@ -28,6 +29,8 @@ class IsStoreAdmin(BasePermission):
         if not (user and user.is_authenticated and user.is_active and user.is_staff):
             return False
         path = request.path.lower()
+        if user.role == "delivery_partner":
+            return allowed_admin_module(user, "delivery") and path.startswith("/api/v1/admin/delivery-assignments") and request.method in {"GET", "PATCH", "HEAD", "OPTIONS"}
         if "/dashboard/" in path:
             return user.role in {"admin", "super_admin"}
         if "/admin/products" in path or "/admin/categories" in path:

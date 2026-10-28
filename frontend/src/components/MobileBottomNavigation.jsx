@@ -1,4 +1,4 @@
-import { House, LayoutGrid, ShoppingBag, UserRound, WalletCards } from 'lucide-react'
+import { House, LayoutGrid, ShoppingBag, UserRound, ClipboardList } from 'lucide-react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
 
@@ -27,9 +27,9 @@ export default function MobileBottomNavigation({ onCart }) {
         </span>
         <span>Cart</span>
       </button>
-      <NavLink to="/wallet" className={({ isActive }) => `mobile-bottom-item${isActive ? ' is-active' : ''}`}>
-        <WalletCards size={21} strokeWidth={1.9} />
-        <span>Wallet</span>
+      <NavLink to="/orders" className={({ isActive }) => `mobile-bottom-item${isActive ? ' is-active' : ''}`}>
+        <ClipboardList size={21} strokeWidth={1.9} />
+        <span>Orders</span>
       </NavLink>
       <NavLink to="/account" className={() => `mobile-bottom-item${accountActive ? ' is-active' : ''}`}>
         <UserRound size={21} strokeWidth={1.9} />

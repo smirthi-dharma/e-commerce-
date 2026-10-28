@@ -1,5 +1,6 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useState } from 'react'
 import { readSavedCart } from '../utils/cart'
+import useSavedBasket from '../hooks/useSavedBasket'
 
 const CartContext = createContext(null)
 const savedCart = () => {
@@ -8,6 +9,7 @@ const savedCart = () => {
 
 export function CartProvider({ children }) {
   const [items, setItems] = useState(savedCart)
+  const { syncMessage, reloadSavedCart } = useSavedBasket(items, setItems)
   const update = (transform) => {
     setItems(current => {
       const next = typeof transform === 'function' ? transform(current) : transform
@@ -36,7 +38,7 @@ export function CartProvider({ children }) {
   const clear = () => update([])
   const count = items.reduce((total, item) => total + item.quantity, 0)
   const subtotal = items.reduce((total, item) => total + Number(item.price) * item.quantity, 0)
-  const value = useMemo(() => ({ items, add, setQuantity, remove, clear, count, subtotal, syncProduct }), [items, count, subtotal, syncProduct])
+  const value = { items, add, setQuantity, remove, clear, count, subtotal, syncProduct, syncMessage, reloadSavedCart }
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>
 }
 

@@ -2,6 +2,7 @@ from django.core.validators import MinValueValidator
 from django.db import models
 
 class Category(models.Model):
+    image_url = models.URLField(blank=True)
     name = models.CharField(max_length=80, unique=True)
     slug = models.SlugField(max_length=90, unique=True)
     is_active = models.BooleanField(default=True)
@@ -15,6 +16,15 @@ class Category(models.Model):
         return self.name
 
 class Product(models.Model):
+    brand = models.CharField(max_length=100, blank=True)
+    variant_group = models.CharField(max_length=100, blank=True, db_index=True)
+    search_keywords = models.CharField(max_length=500, blank=True)
+    unit_price_label = models.CharField(max_length=100, blank=True)
+    ingredients = models.TextField(blank=True)
+    nutrition = models.TextField(blank=True)
+    storage_instructions = models.TextField(blank=True)
+    gallery = models.JSONField(default=list, blank=True)
+    best_before = models.DateField(null=True, blank=True)
     category = models.ForeignKey(Category, related_name="products", on_delete=models.PROTECT)
     name = models.CharField(max_length=150)
     slug = models.SlugField(max_length=170, unique=True)

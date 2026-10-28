@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { canAccessAdminModule, hasAdminAccess } from './adminAccess'
 
 describe('admin access', () => {
+  it('gives delivery partners navigation only to their assigned module', () => {
+    const driver={role:'delivery_partner',admin_modules:['delivery']}
+    expect(hasAdminAccess(driver)).toBe(true)
+    expect(canAccessAdminModule(driver,'delivery')).toBe(true)
+    expect(canAccessAdminModule(driver,'orders')).toBe(false)
+    expect(canAccessAdminModule(driver,'payments')).toBe(false)
+  })
   it('allows only recognized staff roles into the admin workspace', () => {
     expect(hasAdminAccess({ role: 'admin' })).toBe(true)
     expect(hasAdminAccess({ role: 'inventory_manager', admin_modules: ['inventory'] })).toBe(true)

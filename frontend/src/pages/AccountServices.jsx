@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
+import OrderSupport from '../components/OrderSupport'
 import { Copy, Trash2 } from 'lucide-react'
 import { EmptyState, ErrorState, Loading } from '../components/Shared'
 import { useCart } from '../context/CartContext'
@@ -40,18 +41,22 @@ function AddressBook() {
       setForm(blank); setEditing(null); await resource.refresh()
     } catch (e) { setMessage(errorMessage(e)) } finally { setBusy(false) }
   }
+  const locate = () => {
+    if (!navigator.geolocation) { setMessage('Location is unavailable on this device. Enter your address manually.'); return }
+    navigator.geolocation.getCurrentPosition(position => setForm(current => ({ ...current, latitude:position.coords.latitude.toFixed(6), longitude:position.coords.longitude.toFixed(6) })), () => setMessage('Location could not be read. You can still enter your address manually.'), { timeout:10000 })
+  }
   const edit = (address) => { setForm({ ...address }); setEditing(address.id); window.scrollTo({ top: 0, behavior: 'smooth' }) }
   const remove = async (id) => {
     try { await api.delete(`/account/addresses/${id}/`); await resource.refresh() } catch (e) { setMessage(errorMessage(e)) }
   }
   return <PageFrame title="My Addresses" intro="Save delivery details for a smoother checkout.">
     <form className="account-service-form" onSubmit={save}><h2>{editing ? 'Edit address' : 'Add an address'}</h2>
-      <div className="service-form-grid">
+      <button type="button" className="button secondary" onClick={locate}>Use my current location</button>{form.latitude && form.longitude && <p>Location pin saved: {form.latitude}, {form.longitude}. Please also enter your street address.</p>}<div className="service-form-grid">
         {[
-          ['recipient_name', 'Recipient name'], ['mobile_number', 'Mobile number'], ['address_line1', 'Address line 1'],
+          ['label', 'Address label (Home, Work, Other)'], ['landmark', 'Landmark (optional)'], ['recipient_name', 'Recipient name'], ['mobile_number', 'Mobile number'], ['address_line1', 'Address line 1'],
           ['address_line2', 'Address line 2 (optional)'], ['locality', 'Locality'], ['city', 'City'],
           ['state', 'State'], ['pin_code', 'PIN code'],
-        ].map(([key, label]) => <label className="field" key={key}><span>{label}</span><input required={!key.endsWith('2')} maxLength={key === 'pin_code' ? 6 : 200} pattern={key === 'pin_code' ? '[1-9][0-9]{5}' : undefined} inputMode={key === 'pin_code' || key === 'mobile_number' ? 'tel' : undefined} value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} /></label>)}
+        ].map(([key, label]) => <label className="field" key={key}><span>{label}</span><input required={!['address_line2', 'landmark', 'label'].includes(key)} maxLength={key === 'pin_code' ? 6 : 200} pattern={key === 'pin_code' ? '[1-9][0-9]{5}' : undefined} inputMode={key === 'pin_code' || key === 'mobile_number' ? 'tel' : undefined} value={form[key] || ''} onChange={(e) => setForm({ ...form, [key]: e.target.value })} /></label>)}
       </div>
       <label className="field"><span>Delivery instructions (optional)</span><textarea rows="2" value={form.delivery_instructions} onChange={(e) => setForm({ ...form, delivery_instructions: e.target.value })} /></label>
       <label className="check-field"><input type="checkbox" checked={form.is_default} onChange={(e) => setForm({ ...form, is_default: e.target.checked })} /> Make this my default address</label>
@@ -77,7 +82,10 @@ function Questions() {
   </PageFrame>
 }
 
-function CasePage({ support = false }) {
+function CasePage({ support = false }) { return support ? <OrderSupport /> : <RequestPage /> }
+
+function RequestPage() {
+  const support = false
   const endpoint = support ? '/account/support-tickets/' : '/account/requests/'
   const resource = useResource(endpoint)
   const [form, setForm] = useState({ subject: '', message: '', kind: 'general' })

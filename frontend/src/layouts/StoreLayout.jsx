@@ -13,6 +13,7 @@ import '../video-storefront.css'
 import '../quick-commerce.css'
 import '../reference-storefront.css'
 import '../responsive.css'
+import '../commerce.css'
 import api, { errorMessage } from '../services/api'
 
 const PolicyPage = lazy(() => import('../pages/PolicyPage'))
@@ -71,7 +72,10 @@ export default function StoreLayout() {
     return () => { document.body.style.overflow = previousOverflow }
   }, [openPolicy])
   useEffect(() => {
-    api.get('/system-settings/public/').then(({ data }) => setStore((current) => ({ ...current, ...data }))).catch(() => setStoreSettingsError('Store information could not be refreshed.'))
+    const loadSettings = event => api.get('/system-settings/public/', { params:{ pin:event?.detail?.pin } }).then(({ data }) => { setStore((current) => ({ ...current, ...data })); setStoreSettingsError('') }).catch(() => setStoreSettingsError('Store information could not be refreshed.'))
+    loadSettings()
+    window.addEventListener('store:delivery-changed', loadSettings)
+    return () => window.removeEventListener('store:delivery-changed', loadSettings)
   }, [])
   const personal = location.pathname === '/account' || location.pathname === '/wallet'
   const showBasket = count > 0 && !['/cart', '/demo-basket', '/checkout', '/login', '/register', '/account', '/wallet'].includes(location.pathname)

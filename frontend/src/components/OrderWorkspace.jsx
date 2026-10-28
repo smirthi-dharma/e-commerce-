@@ -14,6 +14,9 @@ import {
 } from '../utils/orderTracking'
 import { ErrorState, Loading } from './Shared'
 import InvoiceActions from './InvoiceActions'
+import ReorderButton from './ReorderButton'
+import OrderAlerts from './OrderAlerts'
+import PackingChecklist from './PackingChecklist'
 import '../order-tracking.css'
 
 export default function OrderWorkspace({ admin = false }) {
@@ -50,8 +53,8 @@ export default function OrderWorkspace({ admin = false }) {
     const timer = admin
       ? null
       : setInterval(() => {
-          if (document.visibilityState === 'visible') load(false)
-        }, 20000)
+          if (document.visibilityState === 'visible' || window.Notification?.permission === 'granted') load(false)
+        }, 10000)
     return () => {
       active = false
       controller.abort()
@@ -222,6 +225,8 @@ export default function OrderWorkspace({ admin = false }) {
           )}
         </div>
       )}
+      {!admin && <div className="delivery-status">{order.estimated_delivery_latest_at && !['delivered','cancelled'].includes(order.status) && <p>Estimated arrival: {new Date(order.estimated_delivery_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}–{new Date(order.estimated_delivery_latest_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}{new Date(order.estimated_delivery_latest_at) < new Date() && ' · Taking longer than expected; contact the store for an updated time.'}</p>}<ReorderButton order={order} /><OrderAlerts order={order} /><Link className="text-link" to={`/account/support?order=${order.id}`}>Get help with this order</Link></div>}
+      {admin && ['pending','confirmed','processing'].includes(order.status) && <PackingChecklist order={order} onUpdate={setOrder} />}
       <nav className="order-section-nav" aria-label="Order sections">
         {[
           ['order', 'Order details'],
@@ -311,8 +316,8 @@ export default function OrderWorkspace({ admin = false }) {
                       ? `Delivery partner: ${order.delivery.personnel_name}`
                       : 'Delivery partner not assigned yet'}
                   </p>
-                  <p>Schedule: {orderDate(order.delivery.scheduled_at)}</p>
-                  <p>Delivery status: {order.delivery.status.replaceAll('_', ' ')}</p>
+                  <p>Schedule: {orderDate(order.delivery.scheduled_at)}</p>{order.delivery.personnel_phone && <a className="text-link" href={`tel:${order.delivery.personnel_phone}`}>Call delivery partner</a>}
+                  <p>Delivery status: {order.delivery.status.replaceAll('_', ' ')}</p>{order.delivery.shared_location && <a className="text-link" target="_blank" rel="noreferrer" href={`https://www.openstreetmap.org/?mlat=${order.delivery.shared_location.latitude}&mlon=${order.delivery.shared_location.longitude}#map=16/${order.delivery.shared_location.latitude}/${order.delivery.shared_location.longitude}`}>View delivery location · shared {orderDate(order.delivery.shared_location.shared_at)}</a>}
                 </div>
               )}
               {admin &&

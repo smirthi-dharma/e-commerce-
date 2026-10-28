@@ -1,8 +1,9 @@
+import { recordActivity } from '../services/activity'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useCart } from '../context/CartContext'
-import { DeliverySummary, ProductPrice } from '../components/Shared'
+import { ProductPrice } from '../components/Shared'
 import api, { errorMessage } from '../services/api'
 import PolicyLink from '../components/PolicyLink'
 import { readPin } from '../components/StorefrontTools'
@@ -25,6 +26,9 @@ export default function Checkout() {
   const { items, subtotal, clear, syncProduct } = useCart()
   const [form, setForm] = useState({ customer_name: user?.full_name || `${user?.first_name || ''} ${user?.last_name || ''}`.trim(), phone: user?.phone || '', address: '', delivery_pin_code: readPin(), coupon_code: '', instructions: '', payment_method: 'cod' })
   const [error, setError] = useState('')
+  const [quote, setQuote] = useState(null)
+  const [quoteError, setQuoteError] = useState('')
+  const [quoteRetry, setQuoteRetry] = useState(0)
   const [settingsError, setSettingsError] = useState('')
   const [addresses, setAddresses] = useState([])
   const [busy, setBusy] = useState(false)
@@ -40,12 +44,14 @@ export default function Checkout() {
   const cartIds = items.map((item) => item.id).join(',')
 
   useEffect(() => {
+    recordActivity('checkout')
     api.get('/referrals/me/wallet/').then(({ data }) => setWallet(data)).catch(() => setWalletError('Wallet could not be loaded. You can still pay by cash.'))
     api.get('/system-settings/public/').then(({ data }) => setStoreSettings({ ...defaultSettings, ...data })).catch((e) => setSettingsError(errorMessage(e)))
     api.get('/account/addresses/').then(({ data }) => {
       const saved = Array.isArray(data) ? data : data.results || []
       setAddresses(saved)
-      const preferred = saved.find((address) => address.is_default)
+      let selected = ''; try { selected = localStorage.getItem('pandiyan_address') || '' } catch { /* Optional storage. */ }
+      const preferred = saved.find(address => String(address.id) === selected) || saved.find((address) => address.is_default)
       if (preferred) useAddress(preferred)
     }).catch((e) => setSettingsError(errorMessage(e)))
   }, [])
@@ -75,23 +81,43 @@ export default function Checkout() {
     ...current,
     customer_name: address.recipient_name,
     phone: address.mobile_number,
-    address: [address.address_line1, address.address_line2, address.locality, address.city, address.state, address.pin_code].filter(Boolean).join(', '),
+    address: [address.address_line1, address.address_line2, address.locality, address.landmark, address.city, address.state, address.pin_code].filter(Boolean).join(', '),
     delivery_pin_code: address.pin_code || '',
     instructions: address.delivery_instructions || '',
   }))
 
+  useEffect(() => {
+    const changed = event => {
+      const selected = addresses.find(address => address.id === event.detail?.addressId)
+      if (selected) useAddress(selected)
+      else if (event.detail?.pin) setForm(current => ({ ...current, delivery_pin_code:event.detail.pin }))
+    }
+    window.addEventListener('store:delivery-changed', changed)
+    return () => window.removeEventListener('store:delivery-changed', changed)
+  }, [addresses])
   const supportedPins = storeSettings.delivery_pin_codes || []
   const supportedPin = supportedPins.includes(form.delivery_pin_code)
-  const quote = deliveryQuote(subtotal, storeSettings)
-  const estimatedTotal = quote.estimatedTotal
-  const walletApplied = useWallet && wallet?.spending_enabled ? Math.min(estimatedTotal, Math.max(0, Number(wallet.balance))) : 0
+  const estimate = deliveryQuote(subtotal, storeSettings)
+  const estimatedTotal = Number(quote?.total ?? estimate.estimatedTotal)
+  const walletApplied = Number(quote?.wallet_amount || 0)
   const cashDue = estimatedTotal - walletApplied
-  const belowMinimum = subtotal < Number(storeSettings.minimum_order_value || 0)
+  const belowMinimum = quote ? Number(quote.remaining_for_minimum) > 0 : subtotal < Number(storeSettings.minimum_order_value || 0)
+  const quoteSignature = JSON.stringify({ items: items.map(({ id, quantity }) => ({ product_id: id, quantity })), delivery_pin_code: form.delivery_pin_code, coupon_code: form.coupon_code, use_wallet: useWallet })
+  useEffect(() => {
+    const controller = new AbortController()
+    setQuote(null); setQuoteError('')
+    if (!items.length || !/^[1-9][0-9]{5}$/.test(form.delivery_pin_code)) return () => controller.abort()
+    const timer = setTimeout(() => api.post('/orders/quote/', JSON.parse(quoteSignature), { signal: controller.signal })
+      .then(({ data }) => { if (!controller.signal.aborted) setQuote(data) })
+      .catch(exception => { if (!controller.signal.aborted) setQuoteError(errorMessage(exception)) }), 350)
+    return () => { clearTimeout(timer); controller.abort() }
+  }, [quoteSignature, quoteRetry])
 
   const submit = async (event) => {
     event.preventDefault()
     if (sending.current) return
     if (!items.length) { setError('Your cart is empty.'); return }
+    if (!quote?.eligible) { setError(quoteError || quote?.availability_message || 'Wait for a valid order quote before confirming.'); return }
     if (items.some((item) => availability[item.id]?.loading || availability[item.id]?.unavailable || availability[item.id]?.error || item.quantity > (availability[item.id]?.product?.stock ?? 0))) {
       setError('One or more items are unavailable or have insufficient stock. Update your basket before placing the order.')
       return
@@ -102,13 +128,13 @@ export default function Checkout() {
     setBusy(true)
     sending.current = true
     try {
-      const payload = { ...form, use_wallet: useWallet, items: items.map(({ id, quantity }) => ({ product_id: id, quantity })) }
+      const payload = { ...form, expected_total: quote.total, expected_wallet_amount: quote.wallet_amount, use_wallet: useWallet, items: items.map(({ id, quantity }) => ({ product_id: id, quantity })) }
       const signature = JSON.stringify(payload)
       if (checkoutAttempt.current?.signature !== signature) checkoutAttempt.current = { signature, key: crypto.randomUUID() }
       const { data } = await api.post('/orders/', { ...payload, checkout_key: checkoutAttempt.current.key })
       clear()
-      navigate(`/orders?placed=${encodeURIComponent(data.order_number)}`)
-    } catch (e) { setError(errorMessage(e)) } finally { setBusy(false); sending.current = false }
+      navigate(`/orders/${data.id}?placed=1`)
+    } catch (e) { setError(errorMessage(e)); setQuoteRetry(value => value + 1) } finally { setBusy(false); sending.current = false }
   }
 
   if (!items.length) return <section className="wrap section"><div className="empty-state"><h2>Your basket is empty</h2><p>Add something before checking out.</p><button className="button primary" onClick={() => navigate('/products')}>Browse products</button></div></section>
@@ -126,7 +152,7 @@ export default function Checkout() {
         <label className="field"><span>Full name</span><input required autoComplete="name" maxLength="150" value={form.customer_name} onChange={(e) => setForm({ ...form, customer_name: e.target.value })} /></label>
         <label className="field"><span>Mobile number</span><input required autoComplete="tel" type="tel" maxLength="20" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></label>
         <label className="field"><span>Delivery address</span><textarea required autoComplete="street-address" rows="4" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="House / flat, street, area, city" /></label>
-        <label className="field"><span>PIN code</span><input required inputMode="numeric" autoComplete="postal-code" pattern="[1-9][0-9]{5}" maxLength="6" value={form.delivery_pin_code} onChange={(e) => setForm({ ...form, delivery_pin_code: e.target.value })} placeholder="625531 or 625534" aria-describedby="checkout-pin-help" /></label>
+        <label className="field"><span>PIN code</span><input required inputMode="numeric" autoComplete="postal-code" pattern="[1-9][0-9]{5}" maxLength="6" value={form.delivery_pin_code} onChange={(e) => setForm({ ...form, delivery_pin_code: e.target.value })} placeholder="Enter delivery PIN" aria-describedby="checkout-pin-help" /></label>
         <p id="checkout-pin-help" className="fine-print">{supportedPin ? 'This PIN code is serviceable.' : `Delivery is available only to PIN codes ${supportedPins.join(' and ')}.`}</p>
         <label className="field"><span>Coupon code <small>(optional)</small></span><input autoCapitalize="characters" maxLength="40" value={form.coupon_code} onChange={(e) => setForm({ ...form, coupon_code: e.target.value.toUpperCase() })} placeholder="Enter a coupon code" /></label>
         <label className="field"><span>Delivery instructions <small>(optional)</small></span><textarea rows="2" value={form.instructions} onChange={(e) => setForm({ ...form, instructions: e.target.value })} /></label>
@@ -138,19 +164,19 @@ export default function Checkout() {
         {availabilityError && <div className="notice error" role="alert">We could not verify current stock. Retry before placing your order.</div>}
         {availabilityError && <button type="button" className="button secondary" onClick={() => setRefreshVersion((version) => version + 1)}>Retry availability check</button>}
         {error && <div className="notice error" role="alert">{error}</div>}
-        <button className="button primary full" disabled={busy || checkingAvailability || unavailableItems || availabilityError || belowMinimum || !supportedPin}>{busy ? 'Placing order…' : checkingAvailability ? 'Checking availability…' : `Place order · estimated COD ₹${cashDue.toFixed(2)}`}</button>
+        <button className="button primary full" disabled={busy || checkingAvailability || unavailableItems || availabilityError || !quote?.eligible || !supportedPin}>{busy ? 'Placing order…' : checkingAvailability ? 'Checking availability…' : !quote ? 'Waiting for order quote' : `Place order · COD ₹${cashDue.toFixed(2)}`}</button>
       </form>
       <aside className="summary-card">
         <h2>Your order</h2>
         {items.map((item) => <div className="summary-line" key={item.id}><span>{item.name} × {item.quantity}<ProductPrice product={item} /></span><strong>₹{(Number(item.price) * item.quantity).toFixed(2)}</strong></div>)}
-        <DeliverySummary subtotal={subtotal} settings={storeSettings} />
+        {quote ? <><div className="summary-line"><span>Items</span><strong>₹{Number(quote.subtotal).toFixed(2)}</strong></div><div className="summary-line"><span>Coupon savings</span><strong>−₹{Number(quote.discount_amount).toFixed(2)}</strong></div><div className="summary-line"><span>Delivery</span><strong>₹{Number(quote.delivery_fee).toFixed(2)}</strong></div><div className="summary-total"><span>Total</span><strong>₹{Number(quote.total).toFixed(2)}</strong></div><p>Estimated delivery: {quote.estimated_minutes_min}–{quote.estimated_minutes_max} minutes</p>{quote.availability_message && <p role="status">{quote.availability_message}</p>}</> : <p role="status">{quoteError || 'Choose a delivery PIN to get your exact order total.'}</p>}{quoteError && <button type="button" className="button secondary" onClick={() => setQuoteRetry(value => value + 1)}>Refresh quote</button>}
         {useWallet && <><div className="summary-line"><span>Estimated wallet payment</span><strong>−₹{walletApplied.toFixed(2)}</strong></div><div className="summary-line"><span>Estimated cash on delivery</span><strong>₹{cashDue.toFixed(2)}</strong></div><p className="fine-print">Available wallet funds are applied after coupon and delivery calculations. Your confirmed order shows the final split.</p></>}
-        {form.coupon_code && <div className="summary-line"><span>Coupon discount</span><strong>Verified when placed</strong></div>}
-        {form.coupon_code && <p className="fine-print">Delivery eligibility and final total are recalculated after the coupon discount is verified.</p>}
-        {belowMinimum && <p className="notice error">Add ₹{(Number(storeSettings.minimum_order_value) - subtotal).toFixed(2)} more to meet the ₹{Number(storeSettings.minimum_order_value).toFixed(2)} minimum merchandise subtotal.</p>}
-        <p>Delivery is available to {supportedPins.join(' and ')}. Delivery costs ₹{Number(storeSettings.delivery_fee).toFixed(2)} for orders up to ₹{Number(storeSettings.free_delivery_threshold).toFixed(2)}; it is free only above that subtotal.</p>
+
+
+        {belowMinimum && <p className="notice error">Add ₹{Number(quote?.remaining_for_minimum ?? (Number(storeSettings.minimum_order_value) - subtotal)).toFixed(2)} more to meet the ₹{Number(storeSettings.minimum_order_value).toFixed(2)} minimum merchandise subtotal.</p>}
+        <p>Delivery is available to {supportedPins.join(' and ')}. Your service-area delivery fee and coupon-adjusted free-delivery eligibility are included in the quote above.</p>
         <p>The stated delivery window is {storeSettings.delivery_timeline}, subject to the store's operational capacity.</p>
-        <p>Prices, coupon eligibility, and delivery availability are verified by the store when you place your order. The final discount and payable amount are confirmed in your order details.</p>
+        <p>This quote includes current prices, coupon savings and delivery. We check it again when you confirm and ask you to refresh if the total changes.</p>
         <p>{storeSettings.store_name} · {storeSettings.store_location}<br />{storeSettings.contact_phone} · {storeSettings.business_hours}</p>
         <div className="checkout-policy-links" aria-label="Order policies"><span>Review before ordering:</span><PolicyLink policy="terms">Terms &amp; Conditions</PolicyLink><PolicyLink policy="privacy">Privacy Policy</PolicyLink><PolicyLink policy="returns">Return &amp; Refund Policy</PolicyLink><PolicyLink policy="delivery">Delivery Policy</PolicyLink></div>
       </aside>
