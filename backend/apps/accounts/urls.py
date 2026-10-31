@@ -6,7 +6,7 @@ from apps.catalog.permissions import IsStoreAdmin
 from .models import User
 from .serializers import AdminCustomerSerializer, AdminStaffSerializer
 from rest_framework_simplejwt.views import TokenRefreshView
-from .views import LoginView, LogoutView, MeView, RegisterView
+from .views import DeleteAccountView, LoginView, LogoutView, MeView, RegisterView
 from apps.customer_services.models import AdminAuditEntry
 
 class AdminCustomersView(APIView):
@@ -76,6 +76,7 @@ urlpatterns = [
     path("auth/refresh/", TokenRefreshView.as_view()),
     path("auth/logout/", LogoutView.as_view()),
     path("auth/me/", MeView.as_view()),
+    path("auth/delete-account/", DeleteAccountView.as_view()),
     path("admin/customers/", AdminCustomersView.as_view()),
     path("admin/customers/<int:pk>/", AdminCustomersView.as_view()),
     path("admin/staff/", AdminStaffViewSet.as_view({"get": "list", "post": "create"})),
