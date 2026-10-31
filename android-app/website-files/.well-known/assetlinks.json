@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.pandiyanstore.app",
+      "sha256_cert_fingerprints": [
+        "B7:52:42:3A:40:B8:B8:BC:8D:D7:3D:F0:38:EB:52:0F:46:D1:A7:8F:ED:0C:20:8F:8C:4E:60:86:AF:56:4F:70"
+      ]
+    }
+  }
+]

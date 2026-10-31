@@ -1,0 +1,4 @@
+<en-US>
+Introducing the updated Pandiyan Stores shopping experience.
+Browse store products, manage your cart, place orders, and view your account and order history.
+</en-US>
