@@ -65,6 +65,18 @@ class LogoutView(APIView):
             return Response({"detail": "A valid refresh token is required."}, status=status.HTTP_400_BAD_REQUEST)
         return Response(status=status.HTTP_205_RESET_CONTENT)
 
+class DeleteAccountView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
+
+    def post(self, request):
+        if not request.user.check_password(str(request.data.get("password", ""))):
+            raise ValidationError({"password": "Password is incorrect."})
+        from .deletion import delete_customer_account
+        delete_customer_account(request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 class MeView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = UserSerializer

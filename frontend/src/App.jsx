@@ -28,6 +28,7 @@ import { Login, Register } from './pages/AuthPages'
 import { canAccessAdminModule, hasAdminAccess } from './utils/adminAccess'
 
 const PolicyPage = lazy(() => import('./pages/PolicyPage'))
+const DeleteAccount = lazy(() => import('./pages/DeleteAccount'))
 
 function Guard({ admin = false, adminModule, adminRoles, children }) {
   const { user, ready } = useAuth()
@@ -59,6 +60,7 @@ export default function App() {
     <Route path="login" element={<Login />} />
     <Route path="register" element={<Register />} />
     <Route path="account" element={<Account />} />
+    <Route path="delete-account" element={<DeleteAccount />} />
     <Route path="account/:section" element={<Guard><AccountServices /></Guard>} />
     <Route path="blogs" element={<AccountServices />} />
     <Route path="blogs/:slug" element={<AccountServices />} />

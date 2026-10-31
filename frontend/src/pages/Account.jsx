@@ -1,12 +1,12 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ChevronRight, UserRound, Package, WalletCards, Headset, MapPin, Heart, CircleHelp, ClipboardList, BookOpen, Store, Info, ShieldCheck, Gift, LogOut } from 'lucide-react'
+import { ArrowLeft, ChevronRight, UserRound, Package, WalletCards, Headset, MapPin, Heart, CircleHelp, ClipboardList, BookOpen, Store, Info, ShieldCheck, Gift, LogOut, UserX } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { hasAdminAccess } from '../utils/adminAccess'
 
 const groups = [
   {title:'Your information', rows:[[MapPin,'Address book','/account/addresses'],[Heart,'Your wishlist','/account/wishlist'],[CircleHelp,'Your questions','/account/questions'],[ClipboardList,'Your requests','/account/requests']]},
   {title:'Rewards & payments', rows:[[WalletCards,'Your wallet','/wallet'],[Gift,'Referral rewards','/referrals']]},
-  {title:'More from your store', rows:[[BookOpen,'News & stories','/blogs'],[Store,'Reseller programme','/account/reseller'],[Info,'Store information','/account/information'],[ShieldCheck,'Privacy policy','/privacy-policy'],[Headset,'Contact support','/account/support']]},
+  {title:'More from your store', rows:[[BookOpen,'News & stories','/blogs'],[Store,'Reseller programme','/account/reseller'],[Info,'Store information','/account/information'],[ShieldCheck,'Privacy policy','/privacy-policy'],[Headset,'Contact support','/account/support'],[UserX,'Delete account','/delete-account']]},
 ]
 
 export default function Account() {
