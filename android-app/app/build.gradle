@@ -7,8 +7,8 @@ android {
         applicationId 'com.pandiyanstore.app'
         minSdk 24
         targetSdk 36
-        versionCode 3
-        versionName '2.0.1'
+        versionCode 4
+        versionName '2.0.2'
     }
     signingConfigs {
         if (signingDirectory) {
@@ -24,8 +24,8 @@ android {
     buildTypes {
         release {
             if (signingDirectory) signingConfig signingConfigs.release
-            // R8 output ships a mapping file inside the bundle, so Play can deobfuscate crashes.
-            minifyEnabled true
+            // R8 is off: the shrunk 2.0.1 build crashed on launch.
+            minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
