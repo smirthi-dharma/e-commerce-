@@ -57,3 +57,52 @@
   .quick-store .footer { padding-top:20px; }
   .quick-store .footer-grid { gap:20px; }
 }
+
+/* Narrow touch screens: preserve readable card columns and predictable action rows. */
+@media (max-width: 600px) {
+  .quick-store .quick-referral {
+    display:grid;
+    grid-template-columns:44px minmax(0, 1fr);
+    align-items:center;
+    gap:12px;
+    padding:20px 18px;
+  }
+  .quick-store .quick-referral .referral-symbol { grid-row:span 2; width:44px; height:44px; }
+  .quick-store .quick-referral > div { width:auto; max-width:none; min-width:0; }
+  .quick-store .quick-referral h2 { font-size:clamp(18px, 5.3vw, 21px); line-height:1.18; overflow-wrap:normal; }
+  .quick-store .quick-referral p { font-size:12px; line-height:1.45; }
+  .quick-store .quick-referral .referral-link {
+    grid-column:2;
+    justify-self:start;
+    margin:0;
+    min-height:44px;
+    white-space:normal;
+  }
+
+  .quick-store .orders-page .order-card-head { flex-wrap:wrap; }
+  .quick-store .orders-page .order-card-head > div { min-width:0; }
+  .quick-store .orders-page .order-cost-breakdown {
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:8px 12px;
+    font-size:11px;
+  }
+  .quick-store .orders-page .order-cost-breakdown strong { grid-column:1 / -1; }
+  .quick-store .orders-page .order-card-foot { align-items:flex-start; flex-wrap:wrap; gap:10px; }
+  .quick-store .orders-page .order-card-foot > span { min-width:0; overflow-wrap:anywhere; }
+  .quick-store .orders-page .order-customer-actions {
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:8px;
+  }
+  .quick-store .orders-page .order-customer-actions > * { min-width:0; }
+  .quick-store .orders-page .order-customer-actions .button { width:100%; min-height:44px; padding-inline:9px; }
+}
+
+@media (max-width: 359px) {
+  .quick-store .quick-referral { grid-template-columns:40px minmax(0, 1fr); padding-inline:14px; }
+  .quick-store .quick-referral .referral-symbol { width:40px; height:40px; }
+  .quick-store .quick-referral h2 { font-size:17px; }
+  .quick-store .orders-page .order-cost-breakdown,
+  .quick-store .orders-page .order-customer-actions { grid-template-columns:minmax(0, 1fr); }
+}
