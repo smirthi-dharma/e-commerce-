@@ -1,8 +1,9 @@
+import { lazy, Suspense } from 'react'
+
 const Categories = lazy(() => import('./pages/Categories'))
 const DemoBasket = lazy(() => import('./pages/DemoBasketRoute'))
 const Wallet = lazy(() => import('./pages/Wallet'))
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import { lazy, Suspense } from 'react'
 import { useAuth } from './context/AuthContext'
 import StoreLayout from './layouts/StoreLayout'
 const AdminLayout = lazy(() => import('./layouts/AdminLayout'))
