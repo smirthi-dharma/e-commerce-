@@ -1,4 +1,5 @@
 import InvoiceActions from '../components/InvoiceActions'
+import ReorderButton from '../components/ReorderButton'
 import '../order-tracking.css'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -160,7 +161,7 @@ export default function Orders() {
                   </Link>
                 </div>
                 <div className="order-customer-actions">
-                  <InvoiceActions order={order} compact />
+                  <InvoiceActions order={order} compact /><ReorderButton order={order} />
                   {cancelable.includes(order.status) && (
                     <button
                       className="button secondary small"

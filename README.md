@@ -163,3 +163,8 @@ The supplied production URL currently returns the frontend HTML for `/api/v1/cat
 ## Typography and photography update
 
 The customer storefront uses locally hosted Lato with the included Open Font License, a larger text scale estimated from the supplied Blinkit screenshot, and original photorealistic hero/department artwork. Desktop sizes are 44px hero heading, 26–28px hero copy, 28px promotion headings and 14px category captions. Product labels and mobile text remain readable at narrower widths. The reference site's reported Okra family is not bundled; this is a close available font substitute rather than an exact font match. See DESIGN.md for capture evidence and sizing notes, and frontend/public/images/storefront/provenance.json for generation briefs. Inventory product photographs are unchanged.
+
+
+## Shopping and fulfilment update
+
+See [QUICK_COMMERCE.md](QUICK_COMMERCE.md) for the new mobile shopping, catalogue, delivery rules, checkout quotes, saved baskets/lists, support, picking, delivery-partner workspace, app installation and aggregate activity reporting. Apply migrations before serving the updated code. UPI/card integration and phone OTP remain deferred.

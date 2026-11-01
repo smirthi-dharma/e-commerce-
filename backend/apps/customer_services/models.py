@@ -1,4 +1,5 @@
 import secrets
+from datetime import time
 import string
 from decimal import Decimal
 from django.conf import settings
@@ -19,6 +20,10 @@ def default_delivery_pin_codes():
 
 
 class Address(models.Model):
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    label = models.CharField(max_length=30, blank=True)
+    landmark = models.CharField(max_length=200, blank=True)
     customer = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="saved_addresses", on_delete=models.CASCADE)
     default_for_customer = models.PositiveBigIntegerField(null=True, blank=True, unique=True, editable=False)
     recipient_name = models.CharField(max_length=150)
@@ -39,6 +44,28 @@ class Address(models.Model):
     def save(self, *args, **kwargs):
         self.default_for_customer = self.customer_id if self.is_default else None
         super().save(*args, **kwargs)
+
+
+class CustomerCart(models.Model):
+    customer = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    items = models.JSONField(default=list)
+    revision = models.PositiveIntegerField(default=0)
+
+
+class ShoppingList(models.Model):
+    customer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    name = models.CharField(max_length=80)
+    items = models.JSONField(default=list)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+
+class ShoppingActivity(models.Model):
+    kind = models.CharField(max_length=20, choices=[("product_view", "Product view"), ("add_to_cart", "Add to cart"), ("search", "Search"), ("empty_search", "Empty search"), ("checkout", "Checkout opened")])
+    product = models.ForeignKey("catalog.Product", null=True, blank=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
 
 class WishlistItem(models.Model):
@@ -103,6 +130,11 @@ class CustomerRequest(models.Model):
 
 
 class SupportTicket(models.Model):
+    order = models.ForeignKey("orders.Order", null=True, blank=True, on_delete=models.PROTECT)
+    issue_type = models.CharField(max_length=20, blank=True, choices=[("missing", "Missing item"), ("wrong", "Wrong item"), ("quality", "Quality issue"), ("delivery", "Delivery issue"), ("other", "Other")])
+    affected_items = models.JSONField(default=list, blank=True)
+    photo_data = models.BinaryField(null=True, blank=True, editable=False)
+    photo_content_type = models.CharField(max_length=30, blank=True)
     class Status(models.TextChoices):
         OPEN = "open", "Open"
         IN_PROGRESS = "in_progress", "In progress"
@@ -213,6 +245,13 @@ class SecurityEvent(models.Model):
 
 
 class SystemSettings(models.Model):
+    orders_paused = models.BooleanField(default=False)
+    pause_message = models.CharField(max_length=200, blank=True)
+    enforce_opening_hours = models.BooleanField(default=False)
+    opens_at = models.TimeField(default=time(9))
+    closes_at = models.TimeField(default=time(21))
+    max_active_orders = models.PositiveSmallIntegerField(default=0)
+    packing_minutes_per_order = models.PositiveSmallIntegerField(default=2)
     store_name = models.CharField(max_length=120, default="Pandiyan Stores")
     store_location = models.CharField(max_length=160, default="Theni, Tamil Nadu, India")
     contact_phone = models.CharField(max_length=20, default="8072661435")
@@ -259,6 +298,7 @@ class DeliveryArea(models.Model):
 
 
 class DeliveryPersonnel(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT)
     name = models.CharField(max_length=120)
     phone = models.CharField(max_length=20)
     is_available = models.BooleanField(default=True)
@@ -267,6 +307,9 @@ class DeliveryPersonnel(models.Model):
 
 
 class DeliveryAssignment(models.Model):
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    location_shared_at = models.DateTimeField(null=True, blank=True)
     class Status(models.TextChoices):
         ASSIGNED = "assigned", "Assigned"
         DISPATCHED = "dispatched", "Dispatched"

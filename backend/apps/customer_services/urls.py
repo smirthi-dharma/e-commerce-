@@ -16,10 +16,12 @@ from .views import (
     AdminInventoryImportView, AdminInventoryStockView, AdminReportView, PublicHomepageBannerView,
     AdminHomepageBannerViewSet,
     AdminAuditLogView,
-    AdminSupportAgentsView,
+    AdminSupportAgentsView, AdminDeliveryAccountsView,
 )
 
 router = DefaultRouter()
+from .shopping import CartView, ShoppingListViewSet
+router.register("account/shopping-lists", ShoppingListViewSet, basename="shopping-list")
 router.register("account/addresses", AddressViewSet, basename="account-address")
 router.register("account/wishlist", WishlistViewSet, basename="account-wishlist")
 router.register("account/questions", CustomerQuestionViewSet, basename="account-question")
@@ -46,7 +48,11 @@ router.register("admin/payments", AdminPaymentViewSet, basename="admin-payment")
 router.register("admin/refunds", AdminRefundViewSet, basename="admin-refund")
 router.register("admin/homepage-banners", AdminHomepageBannerViewSet, basename="admin-homepage-banner")
 
+from .activity import ActivityView
+
 urlpatterns = [
+    path("shopping-activity/", ActivityView.as_view()),
+    path("account/cart/", CartView.as_view()),
     path("", include(router.urls)),
     path("account/rewards/", CustomerRewardsView.as_view()),
     path("account/reseller/", ResellerMeView.as_view()),
@@ -57,6 +63,7 @@ urlpatterns = [
     path("admin/system-settings/", AdminSystemSettingsView.as_view()),
     path("admin/audit-log/", AdminAuditLogView.as_view()),
     path("admin/support-agents/", AdminSupportAgentsView.as_view()),
+    path("admin/delivery-accounts/", AdminDeliveryAccountsView.as_view()),
     path("system-settings/public/", PublicOperationalSettingsView.as_view()),
     path("homepage-banners/", PublicHomepageBannerView.as_view()),
     path("admin/inventory/stock/", AdminInventoryStockView.as_view()),

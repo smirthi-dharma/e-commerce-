@@ -1,4 +1,5 @@
 const ADMIN_ROLE_MODULES = {
+  delivery_partner: ['delivery'],
   admin: ['*'],
   super_admin: ['*'],
   product_manager: ['products'],

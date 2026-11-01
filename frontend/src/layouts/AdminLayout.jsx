@@ -71,7 +71,7 @@ export default function AdminLayout() {
       setNotificationError(false)
       return
     }
-    api.get('/admin/dashboard/?period=all_time')
+    const loadNotifications = () => api.get('/admin/dashboard/?period=all_time')
       .then(({ data }) => {
         setPendingOrders((data.awaiting_confirmation || 0) + (data.confirmed_orders || 0) + (data.processing_orders || 0) + (data.out_for_delivery || 0))
         setNotificationError(false)
@@ -80,6 +80,9 @@ export default function AdminLayout() {
         setPendingOrders(null)
         setNotificationError(true)
       })
+    loadNotifications()
+    const timer = setInterval(() => { if (document.visibilityState === 'visible') loadNotifications() }, 15000)
+    return () => clearInterval(timer)
   }, [location.pathname, isSeniorAdmin])
 
   const signOut = () => logout().finally(() => navigate('/login'))

@@ -90,7 +90,21 @@ class CustomerRequestViewSet(CustomerModelViewSet):
     http_method_names = ["get", "post", "head", "options"]
 
 
+def ticket_photo(ticket):
+    if not ticket.photo_data:
+        from django.http import Http404
+        raise Http404()
+    response = HttpResponse(bytes(ticket.photo_data), content_type=ticket.photo_content_type)
+    response["Cache-Control"] = "private, no-store"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
 class SupportTicketViewSet(CustomerModelViewSet):
+    @action(detail=True, methods=["get"])
+    def photo(self, request, pk=None):
+        return ticket_photo(self.get_object())
+
     queryset = SupportTicket.objects.all()
     serializer_class = SupportTicketSerializer
     http_method_names = ["get", "post", "head", "options"]
@@ -131,6 +145,10 @@ class AdminRequestViewSet(AdminCustomerViewSet):
 
 
 class AdminSupportTicketViewSet(AdminCustomerViewSet):
+    @action(detail=True, methods=["get"])
+    def photo(self, request, pk=None):
+        return ticket_photo(self.get_object())
+
     queryset = SupportTicket.objects.select_related("customer")
     serializer_class = AdminSupportTicketSerializer
 
@@ -393,6 +411,7 @@ class PublicOperationalSettingsView(APIView):
 
     def get(self, request):
         settings = SystemSettings.current()
+        from .operations import delivery_policy
         return Response({
             "store_name": settings.store_name,
             "store_location": settings.store_location,
@@ -405,6 +424,7 @@ class PublicOperationalSettingsView(APIView):
             "free_delivery_threshold": settings.free_delivery_threshold,
             "minimum_order_value": settings.minimum_order_value,
             "free_delivery_operator": "greater_than",
+            **delivery_policy(settings, request.query_params.get("pin")),
         })
 
 
@@ -464,11 +484,26 @@ class AdminDeliveryPersonnelViewSet(viewsets.ModelViewSet):
     search_fields = ["name", "phone"]
 
 
+class AdminDeliveryAccountsView(APIView):
+    permission_classes = [IsStoreAdmin]
+
+    def get(self, request):
+        from apps.accounts.models import User
+        return Response(list(User.objects.filter(role="delivery_partner", is_active=True, is_staff=True).order_by("first_name", "pk").values("id", "first_name", "last_name", "phone")))
+
+
 class AdminDeliveryAssignmentViewSet(viewsets.ModelViewSet):
     queryset = DeliveryAssignment.objects.select_related("order", "personnel")
     serializer_class = DeliveryAssignmentSerializer
     permission_classes = [IsStoreAdmin]
     filterset_fields = ["status", "personnel"]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.request.user.role == "delivery_partner":
+            queryset = queryset.filter(personnel__user=self.request.user, personnel__is_active=True).exclude(order__status__in=["delivered", "cancelled"]).order_by("-pk")
+        return queryset
+
     search_fields = ["order__order_number", "order__customer_name", "order__delivery_pin_code"]
 
     @transaction.atomic
@@ -483,6 +518,8 @@ class AdminDeliveryAssignmentViewSet(viewsets.ModelViewSet):
             serializer.validate_status(serializer.validated_data["status"])
         previous_status = assignment.status
         assignment = serializer.save()
+        if "latitude" in serializer.validated_data:
+            assignment.location_shared_at = timezone.now() if assignment.latitude is not None else None
         now = timezone.now()
         if assignment.status == DeliveryAssignment.Status.DISPATCHED and not assignment.dispatched_at:
             assignment.dispatched_at = now

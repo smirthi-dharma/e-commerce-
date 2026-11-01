@@ -175,6 +175,8 @@ class AdminStaffSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"admin_modules": "Senior administrators have full access and do not use manager module grants."})
         if len(modules) != len(set(modules)):
             raise serializers.ValidationError({"admin_modules": "Each manager module can only be assigned once."})
+        if role == User.Role.DELIVERY_PARTNER and set(modules) != {"delivery"}:
+            raise serializers.ValidationError({"admin_modules": "Delivery partners require only the delivery module."})
         grant_permission = attrs.get("grant_referral_settings", False)
         if grant_permission and role not in {User.Role.ADMIN, User.Role.SUPER_ADMIN} and "referrals" not in modules:
             raise serializers.ValidationError({

@@ -1,0 +1,10 @@
+{
+  "name": "Pandiyan Stores",
+  "short_name": "Pandiyan",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#176b45",
+  "icons": [{ "src": "/store-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import api, { errorMessage } from '../services/api'
 import { ErrorState, Loading } from '../components/Shared'
 
-const staffRoles = ['admin', 'super_admin', 'product_manager', 'order_manager', 'inventory_manager', 'customer_support', 'marketing_manager', 'finance_manager']
+const staffRoles = ['admin', 'super_admin', 'product_manager', 'order_manager', 'inventory_manager', 'customer_support', 'marketing_manager', 'finance_manager', 'delivery_partner']
 const managerModules = ['products', 'inventory', 'orders', 'delivery', 'customers', 'support', 'returns', 'blogs', 'referrals', 'coupons', 'promotions', 'reports', 'payments', 'refunds', 'reseller-finance']
 
 export default function AdminStaff() {
@@ -38,6 +38,7 @@ export default function AdminStaff() {
     }
   }
   const updateStaff = async (member, changes) => {
+    if (changes.role === 'delivery_partner') changes = { ...changes, admin_modules:['delivery'] }
     setError('')
     try {
       await api.patch(`/admin/staff/${member.id}/`, changes)
@@ -56,8 +57,8 @@ export default function AdminStaff() {
       <label className="field"><span>First name</span><input name="first_name" required autoComplete="given-name" /></label>
       <label className="field"><span>Last name</span><input name="last_name" autoComplete="family-name" /></label>
       <label className="field"><span>Phone</span><input name="phone" required type="tel" autoComplete="tel" /></label>
-      <label className="field"><span>Role</span><select name="role" value={newRole} onChange={(event) => setNewRole(event.target.value)}>{staffRoles.map((role) => <option value={role} key={role}>{role.replaceAll('_', ' ')}</option>)}</select></label>
-      {!['admin', 'super_admin'].includes(newRole) && <fieldset className="referral-status-fieldset"><legend>Manager modules</legend><div>{managerModules.map((module) => <label className="check-field" key={module}><input type="checkbox" checked={newModules.includes(module)} onChange={(event) => setNewModules((current) => event.target.checked ? [...current, module] : current.filter((value) => value !== module))} />{module.replaceAll('-', ' ').replaceAll('_', ' ')}</label>)}</div></fieldset>}
+      <label className="field"><span>Role</span><select name="role" value={newRole} onChange={(event) => { setNewRole(event.target.value); if (event.target.value === 'delivery_partner') setNewModules(['delivery']) }}>{staffRoles.map((role) => <option value={role} key={role}>{role.replaceAll('_', ' ')}</option>)}</select></label>
+      {!['admin', 'super_admin'].includes(newRole) && <fieldset className="referral-status-fieldset"><legend>Manager modules</legend><div>{(newRole === 'delivery_partner' ? ['delivery'] : managerModules).map((module) => <label className="check-field" key={module}><input type="checkbox" checked={newModules.includes(module)} onChange={(event) => setNewModules((current) => event.target.checked ? [...current, module] : current.filter((value) => value !== module))} />{module.replaceAll('-', ' ').replaceAll('_', ' ')}</label>)}</div></fieldset>}
       <label className="field"><span>Temporary password</span><input name="password" type="password" minLength="12" required autoComplete="new-password" /></label>
       <button className="button primary" disabled={busy}>{busy ? 'Creating…' : 'Create staff account'}</button>
     </form>
@@ -66,7 +67,7 @@ export default function AdminStaff() {
       <div className="admin-service-record-main"><h2>{member.full_name || member.email}</h2><p>{member.email} · {member.phone}</p><span className="status">{member.role.replaceAll('_', ' ')}</span></div>
       <div className="admin-service-controls">
         <label className="field"><span>Role</span><select value={member.role} onChange={(event) => updateStaff(member, { role: event.target.value })}>{staffRoles.map((role) => <option key={role} value={role}>{role.replaceAll('_', ' ')}</option>)}</select></label>
-        {!['admin', 'super_admin'].includes(member.role) && <fieldset className="referral-status-fieldset"><legend>Assigned modules</legend><div>{managerModules.map((module) => <label className="check-field" key={module}><input type="checkbox" checked={(member.admin_modules || []).includes(module)} onChange={(event) => updateStaff(member, { admin_modules: event.target.checked ? [...(member.admin_modules || []), module] : (member.admin_modules || []).filter((value) => value !== module) })} />{module.replaceAll('-', ' ').replaceAll('_', ' ')}</label>)}</div></fieldset>}
+        {!['admin', 'super_admin'].includes(member.role) && <fieldset className="referral-status-fieldset"><legend>Assigned modules</legend><div>{(member.role === 'delivery_partner' ? ['delivery'] : managerModules).map((module) => <label className="check-field" key={module}><input type="checkbox" checked={(member.admin_modules || []).includes(module)} onChange={(event) => updateStaff(member, { admin_modules: event.target.checked ? [...(member.admin_modules || []), module] : (member.admin_modules || []).filter((value) => value !== module) })} />{module.replaceAll('-', ' ').replaceAll('_', ' ')}</label>)}</div></fieldset>}
         <button className={`button ${member.is_active ? 'secondary' : 'primary'}`} onClick={() => updateStaff(member, { is_active: !member.is_active })}>{member.is_active ? 'Deactivate' : 'Reactivate'}</button>
       </div>
     </article>)}</div>}

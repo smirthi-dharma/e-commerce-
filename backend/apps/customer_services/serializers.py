@@ -15,6 +15,8 @@ from .models import (
 
 
 class AddressSerializer(serializers.ModelSerializer):
+    latitude = serializers.DecimalField(max_digits=9, decimal_places=6, min_value=-90, max_value=90, allow_null=True, required=False)
+    longitude = serializers.DecimalField(max_digits=9, decimal_places=6, min_value=-180, max_value=180, allow_null=True, required=False)
     class Meta:
         model = Address
         exclude = ["customer", "default_for_customer"]
@@ -44,7 +46,8 @@ class ProductSummarySerializer(serializers.ModelSerializer):
         fields = ["id", "name", "slug", "price", "mrp", "mrp_is_sample", "stock", "image_url", "in_stock"]
 
     def get_in_stock(self, obj):
-        return obj.is_active and obj.stock > 0
+        from apps.catalog.serializers import ProductSerializer
+        return ProductSerializer().get_in_stock(obj)
 
 
 class WishlistItemSerializer(serializers.ModelSerializer):
@@ -93,9 +96,47 @@ class AdminCustomerRequestSerializer(CustomerRequestSerializer):
 
 
 class SupportTicketSerializer(serializers.ModelSerializer):
+    photo = serializers.FileField(required=False, write_only=True)
+    has_photo = serializers.SerializerMethodField()
+
+    def get_has_photo(self, obj):
+        return bool(obj.photo_data)
+
+    def validate(self, attrs):
+        order = attrs.get("order", getattr(self.instance, "order", None))
+        user = self.context["request"].user
+        if order and order.customer_id != user.pk and not self.instance:
+            raise serializers.ValidationError({"order": "Select one of your own orders."})
+        affected = attrs.get("affected_items", [])
+        if not isinstance(affected, list) or len(affected) > 100:
+            raise serializers.ValidationError({"affected_items": "Choose up to 100 order items."})
+        valid = {item.pk:item.quantity for item in order.items.all()} if order else {}
+        seen = set()
+        for row in affected:
+            if not isinstance(row, dict) or set(row) != {"item_id", "quantity"} or type(row["item_id"]) is not int or type(row["quantity"]) is not int or row["item_id"] in seen or row["item_id"] not in valid or not 1 <= row["quantity"] <= valid[row["item_id"]]:
+                raise serializers.ValidationError({"affected_items": "Choose valid items and quantities from this order."})
+            seen.add(row["item_id"])
+        photo = attrs.pop("photo", None)
+        if photo:
+            import io
+            from PIL import Image, UnidentifiedImageError
+            if photo.size > 2 * 1024 * 1024:
+                raise serializers.ValidationError({"photo": "Photo must be at most 2 MB."})
+            content = photo.read()
+            try:
+                image = Image.open(io.BytesIO(content))
+                if image.width * image.height > 20000000 or image.format not in {"JPEG", "PNG", "WEBP"}:
+                    raise ValueError()
+                image.verify()
+            except (UnidentifiedImageError, ValueError, OSError, Image.DecompressionBombError):
+                raise serializers.ValidationError({"photo": "Upload a valid JPEG, PNG or WebP photo."})
+            attrs["photo_data"] = content
+            attrs["photo_content_type"] = Image.MIME[image.format]
+        return attrs
+
     class Meta:
         model = SupportTicket
-        fields = ["id", "ticket_number", "subject", "message", "response", "status", "created_at", "updated_at"]
+        fields = ["id", "ticket_number", "subject", "message", "response", "status", "created_at", "updated_at", "order", "issue_type", "affected_items", "photo", "has_photo"]
         read_only_fields = ["id", "ticket_number", "response", "status", "created_at", "updated_at"]
 
 
@@ -104,7 +145,7 @@ class AdminSupportTicketSerializer(SupportTicketSerializer):
 
     class Meta(SupportTicketSerializer.Meta):
         fields = SupportTicketSerializer.Meta.fields + ["customer_id", "internal_notes", "assigned_to", "priority", "first_response_at", "resolved_at"]
-        read_only_fields = ["id", "ticket_number", "created_at", "updated_at"]
+        read_only_fields = ["id", "ticket_number", "created_at", "updated_at", "order", "issue_type", "affected_items"]
 
     def validate_assigned_to(self, user):
         if user and (not user.is_staff or not user.is_active or user.role not in {"admin", "super_admin", "customer_support"}):
@@ -292,7 +333,7 @@ class HomepageBannerSerializer(serializers.ModelSerializer):
 class SystemSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = SystemSettings
-        fields = ["store_name", "store_location", "contact_phone", "business_hours", "delivery_timeline", "delivery_pin_codes", "currency", "delivery_fee", "free_delivery_threshold", "minimum_order_value", "default_low_stock_threshold", "return_window_days", "allow_returns", "updated_at"]
+        fields = ["store_name", "store_location", "contact_phone", "business_hours", "delivery_timeline", "delivery_pin_codes", "currency", "delivery_fee", "free_delivery_threshold", "minimum_order_value", "default_low_stock_threshold", "return_window_days", "allow_returns", "orders_paused", "pause_message", "enforce_opening_hours", "opens_at", "closes_at", "max_active_orders", "packing_minutes_per_order", "updated_at"]
         read_only_fields = ["updated_at"]
 
     def validate(self, attrs):
@@ -302,6 +343,16 @@ class SystemSettingsSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({field: "This amount cannot be negative."})
         return attrs
 
+    def update(self, instance, validated_data):
+        from django.db import transaction
+        with transaction.atomic():
+            if "delivery_pin_codes" in validated_data:
+                pins = validated_data["delivery_pin_codes"]
+                DeliveryArea.objects.exclude(pin_code__in=pins).update(is_active=False)
+                for pin in pins:
+                    DeliveryArea.objects.update_or_create(pin_code=pin, defaults={"is_active": True, "name": pin})
+            return super().update(instance, validated_data)
+
     def validate_delivery_timeline(self, value):
         match = re.fullmatch(r"(\d+)(?:[–-](\d+))?\s+(?:minutes|hours)", value.strip())
         if not match or int(match.group(1)) < 1 or (match.group(2) is not None and int(match.group(2)) < int(match.group(1))):
@@ -309,17 +360,19 @@ class SystemSettingsSerializer(serializers.ModelSerializer):
         return value.strip()
 
     def validate_delivery_pin_codes(self, value):
-        supported = {"625531", "625534"}
         if not isinstance(value, list) or not value:
             raise serializers.ValidationError("At least one delivery PIN code is required.")
         if len(value) != len(set(value)) or any(not re.fullmatch(r"[1-9][0-9]{5}", pin) for pin in value):
             raise serializers.ValidationError("Use unique, valid 6-digit Indian PIN codes.")
-        if not set(value).issubset(supported):
-            raise serializers.ValidationError("Only PIN codes 625531 and 625534 are supported.")
         return value
 
 
 class DeliveryAreaSerializer(serializers.ModelSerializer):
+    def validate_delivery_fee(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError("Delivery fee cannot be negative.")
+        return value
+
     class Meta:
         model = DeliveryArea
         fields = ["id", "name", "pin_code", "delivery_fee", "is_active", "created_at"]
@@ -332,21 +385,38 @@ class DeliveryAreaSerializer(serializers.ModelSerializer):
 
 
 class DeliveryPersonnelSerializer(serializers.ModelSerializer):
+    def validate_user(self, user):
+        if user and (user.role != "delivery_partner" or not user.is_active or not user.is_staff):
+            raise serializers.ValidationError("Link an active delivery-partner staff account.")
+        return user
+
     class Meta:
         model = DeliveryPersonnel
-        fields = ["id", "name", "phone", "is_available", "is_active", "created_at"]
+        fields = ["id", "name", "phone", "user", "is_available", "is_active", "created_at"]
         read_only_fields = ["id", "created_at"]
 
 
 class DeliveryAssignmentSerializer(serializers.ModelSerializer):
+    latitude = serializers.DecimalField(max_digits=9, decimal_places=6, min_value=-90, max_value=90, allow_null=True, required=False)
+    longitude = serializers.DecimalField(max_digits=9, decimal_places=6, min_value=-180, max_value=180, allow_null=True, required=False)
+    order_status = serializers.CharField(source="order.status", read_only=True)
+
+    def get_fields(self):
+        fields = super().get_fields()
+        if self.context.get("request") and self.context["request"].user.role == "delivery_partner":
+            for name, field in fields.items():
+                if name not in {"status", "delivery_note", "proof_reference", "latitude", "longitude"}:
+                    field.read_only = True
+        return fields
+
     order_number = serializers.CharField(source="order.order_number", read_only=True)
     customer_name = serializers.CharField(source="order.customer_name", read_only=True)
     address = serializers.CharField(source="order.address", read_only=True)
 
     class Meta:
         model = DeliveryAssignment
-        fields = ["id", "order", "order_number", "customer_name", "address", "personnel", "status", "scheduled_at", "dispatched_at", "delivered_at", "failed_at", "delivery_note", "proof_reference", "updated_at"]
-        read_only_fields = ["id", "order", "order_number", "customer_name", "address", "updated_at"]
+        fields = ["id", "order", "order_number", "customer_name", "address", "personnel", "status", "scheduled_at", "dispatched_at", "delivered_at", "failed_at", "delivery_note", "proof_reference", "latitude", "longitude", "location_shared_at", "order_status", "updated_at"]
+        read_only_fields = ["id", "order", "order_number", "customer_name", "address", "location_shared_at", "updated_at"]
 
     def validate_personnel(self, personnel):
         if personnel and not personnel.is_active:
@@ -356,6 +426,8 @@ class DeliveryAssignmentSerializer(serializers.ModelSerializer):
         return personnel
 
     def validate(self, attrs):
+        if ("latitude" in attrs) != ("longitude" in attrs) or ("latitude" in attrs and ((attrs["latitude"] is None) != (attrs["longitude"] is None))):
+            raise serializers.ValidationError("Provide both location coordinates or clear both.")
         if self.instance and self.instance.order.status == "cancelled":
             raise serializers.ValidationError("Restore the cancelled order before changing its delivery.")
         if attrs.get("status") == "delivered" and self.instance and self.instance.order.status != "out_for_delivery":

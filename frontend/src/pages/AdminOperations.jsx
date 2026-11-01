@@ -1,4 +1,6 @@
 import CategoryStockUpdate from '../components/CategoryStockUpdate'
+import DriverWorkspace from '../components/DriverWorkspace'
+import { useAuth } from '../context/AuthContext'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import api, { errorMessage } from '../services/api'
@@ -138,6 +140,8 @@ function StoreSettings() {
     try {
       const payload = Object.fromEntries(new FormData(event.currentTarget))
       payload.allow_returns = payload.allow_returns === 'on'
+      payload.orders_paused = payload.orders_paused === 'on'
+      payload.enforce_opening_hours = payload.enforce_opening_hours === 'on'
       payload.delivery_pin_codes = payload.delivery_pin_codes.split(',').map((pin) => pin.trim()).filter(Boolean)
       const { data } = await api.patch('/admin/system-settings/', payload)
       setSettings(data)
@@ -146,26 +150,33 @@ function StoreSettings() {
   }
   if (!settings) return error ? <ErrorState message={error} /> : <Loading />
   return <><h2>Store and fulfilment settings</h2><form key={settings.updated_at} className="account-service-form service-form-grid" onSubmit={save}>
-    {[['store_name','Store name','text'],['store_location','Store location','text'],['contact_phone','Contact number','tel'],['business_hours','Business hours','text'],['delivery_timeline','Delivery timeline (for example 30 minutes)','text'],['currency','Currency code','text'],['delivery_fee','Delivery fee','number'],['free_delivery_threshold','Free-delivery threshold (free only above this amount)','number'],['minimum_order_value','Minimum merchandise subtotal','number'],['default_low_stock_threshold','Default low-stock threshold','number'],['return_window_days','Return window (days)','number']].map(([name,label,type]) => <label className="field" key={name}><span>{label}</span><input name={name} type={type} defaultValue={settings[name] ?? ''} min={type === 'number' ? '0' : undefined} step={['delivery_fee','free_delivery_threshold','minimum_order_value'].includes(name) ? '0.01' : type === 'number' ? '1' : undefined} required={!name.includes('threshold')} /></label>)}
-    <label className="field"><span>Delivery PIN codes (comma-separated)</span><input name="delivery_pin_codes" inputMode="numeric" defaultValue={settings.delivery_pin_codes.join(', ')} /></label>
+    {[['opens_at','Opening time','time'],['closes_at','Closing time','time'],['max_active_orders','Maximum open orders (0 = unlimited)','number'],['packing_minutes_per_order','Extra preparation minutes per open order','number'],['pause_message','Message while paused','text'],['store_name','Store name','text'],['store_location','Store location','text'],['contact_phone','Contact number','tel'],['business_hours','Business hours','text'],['delivery_timeline','Delivery timeline (for example 30 minutes)','text'],['currency','Currency code','text'],['delivery_fee','Delivery fee','number'],['free_delivery_threshold','Free-delivery threshold (free only above this amount)','number'],['minimum_order_value','Minimum merchandise subtotal','number'],['default_low_stock_threshold','Default low-stock threshold','number'],['return_window_days','Return window (days)','number']].map(([name,label,type]) => <label className="field" key={name}><span>{label}</span><input name={name} type={type} defaultValue={settings[name] ?? ''} min={type === 'number' ? '0' : undefined} step={['delivery_fee','free_delivery_threshold','minimum_order_value'].includes(name) ? '0.01' : type === 'number' ? '1' : undefined} required={!name.includes('threshold') && name !== 'pause_message'} /></label>)}
+    <label className="check-field"><input name="orders_paused" type="checkbox" defaultChecked={settings.orders_paused} /> Temporarily pause new orders</label><label className="check-field"><input name="enforce_opening_hours" type="checkbox" defaultChecked={settings.enforce_opening_hours} /> Accept orders only during opening hours</label><label className="field"><span>Delivery PIN codes (comma-separated)</span><input name="delivery_pin_codes" inputMode="numeric" defaultValue={settings.delivery_pin_codes.join(', ')} /></label>
     <label className="field"><span className="inline-check"><input name="allow_returns" type="checkbox" defaultChecked={settings.allow_returns} /> Accept return requests</span></label><button className="button primary">Save settings</button>
   </form>{message && <p className="notice success">{message}</p>}{error && <ErrorState message={error} />}</>
 }
 
 function DeliveryAdmin() {
+  const { user } = useAuth()
+  return user?.role === 'delivery_partner' ? <DriverWorkspace /> : <DeliveryManagement />
+}
+
+function DeliveryManagement() {
   const [error, setError] = useState('')
   const [areas, setAreas] = useState([])
+  const [accounts, setAccounts] = useState([])
   const [people, setPeople] = useState([])
-  const load = () => Promise.all([api.get('/admin/delivery-areas/'), api.get('/admin/delivery-personnel/')]).then(([a, p]) => { setAreas(rows(a.data)); setPeople(rows(p.data)) }).catch((e) => setError(errorMessage(e)))
+  const load = () => Promise.all([api.get('/admin/delivery-areas/'), api.get('/admin/delivery-personnel/'), api.get('/admin/delivery-accounts/')]).then(([a, p, users]) => { setAreas(rows(a.data)); setPeople(rows(p.data)); setAccounts(users.data) }).catch((e) => setError(errorMessage(e)))
   useEffect(() => { load() }, [])
   const create = async (event, endpoint) => {
     event.preventDefault()
-    try { await api.post(endpoint, Object.fromEntries(new FormData(event.currentTarget))); event.currentTarget.reset(); load() } catch (e) { setError(errorMessage(e)) }
+    const form = event.currentTarget
+    try { await api.post(endpoint, Object.fromEntries([...new FormData(form)].filter(([key,value]) => key !== 'user' || value !== ''))); form.reset(); load() } catch (e) { setError(errorMessage(e)) }
   }
   return <><AdminList module="delivery" /><h2>Serviceable PIN codes</h2><form className="account-service-form service-form-grid" onSubmit={(e) => create(e, '/admin/delivery-areas/')}><label className="field"><span>Area name</span><input name="name" required /></label><label className="field"><span>PIN code</span><input name="pin_code" required inputMode="numeric" pattern="[1-9][0-9]{5}" maxLength="6" /></label><label className="field"><span>Delivery fee (blank uses default)</span><input name="delivery_fee" type="number" min="0" step="0.01" /></label><button className="button primary">Add service area</button></form>
     <div className="service-record-list">{areas.map((area) => <article className="service-record" key={area.id}><span>{area.name} · {area.pin_code} · {area.is_active ? 'Active' : 'Inactive'}</span><button className="button secondary small" onClick={async () => { try { await api.patch(`/admin/delivery-areas/${area.id}/`, { is_active: !area.is_active }); load() } catch (e) { setError(errorMessage(e)) } }}>{area.is_active ? 'Disable' : 'Enable'}</button></article>)}</div>
-    <h2>Delivery personnel</h2><form className="account-service-form service-form-grid" onSubmit={(e) => create(e, '/admin/delivery-personnel/')}><label className="field"><span>Name</span><input name="name" required /></label><label className="field"><span>Phone</span><input name="phone" required type="tel" /></label><button className="button primary">Add delivery person</button></form>
-    <div className="service-record-list">{people.map((person) => <article className="service-record" key={person.id}><span>{person.name} · {person.phone} · {person.is_active ? 'Active' : 'Inactive'}</span><button className="button secondary small" onClick={async () => { try { await api.patch(`/admin/delivery-personnel/${person.id}/`, { is_active: !person.is_active }); load() } catch (e) { setError(errorMessage(e)) } }}>{person.is_active ? 'Deactivate' : 'Reactivate'}</button></article>)}</div>
+    <h2>Delivery personnel</h2><form className="account-service-form service-form-grid" onSubmit={(e) => create(e, '/admin/delivery-personnel/')}><label className="field"><span>Name</span><input name="name" required /></label><label className="field"><span>Phone</span><input name="phone" required type="tel" /></label><label className="field"><span>Delivery partner account (optional)</span><select name="user"><option value="">No linked account</option>{accounts.filter(account => !people.some(person => person.user === account.id)).map(account => <option key={account.id} value={account.id}>{account.first_name} {account.last_name} · {account.phone}</option>)}</select></label><button className="button primary">Add delivery person</button></form>
+    <div className="service-record-list">{people.map((person) => <article className="service-record" key={person.id}><span>{person.name} · {person.phone} · {person.is_active ? 'Active' : 'Inactive'}</span><label className="field"><span>Linked delivery account</span><select value={person.user || ''} onChange={async event => { try { await api.patch(`/admin/delivery-personnel/${person.id}/`, {user:event.target.value || null}); load() } catch(exception) { setError(errorMessage(exception)) } }}><option value="">No linked account</option>{accounts.filter(account => account.id === person.user || !people.some(other => other.user === account.id)).map(account => <option key={account.id} value={account.id}>{account.first_name} {account.last_name} · {account.phone}</option>)}</select></label><button className="button secondary small" onClick={async () => { try { await api.patch(`/admin/delivery-personnel/${person.id}/`, { is_active: !person.is_active }); load() } catch (e) { setError(errorMessage(e)) } }}>{person.is_active ? 'Deactivate' : 'Reactivate'}</button></article>)}</div>
     {error && <ErrorState message={error} />}
   </>
 }
@@ -235,7 +246,7 @@ function RefundCreate() {
   const [message, setMessage] = useState('')
   const create = async (event) => {
     event.preventDefault()
-    try { await api.post('/admin/refunds/', Object.fromEntries(new FormData(event.currentTarget))); event.currentTarget.reset(); setMessage('Refund review request created.') } catch (e) { setError(errorMessage(e)) }
+    try { await api.post('/admin/refunds/', Object.fromEntries([...new FormData(event.currentTarget)].filter(([key,value]) => key !== 'user' || value !== ''))); event.currentTarget.reset(); setMessage('Refund review request created.') } catch (e) { setError(errorMessage(e)) }
   }
   return <><h2>Start a refund review</h2><p>Use an order UUID from the order management page. Refunds are not reported as transferred until a verified transfer is recorded.</p><form className="account-service-form service-form-grid" onSubmit={create}><label className="field"><span>Order ID</span><input name="order" required /></label><label className="field"><span>Refund amount</span><input name="amount" type="number" min="0.01" step="0.01" required /></label><label className="field"><span>Reason</span><textarea name="reason" required maxLength="2000" /></label><button className="button primary">Create refund review</button></form>{message && <p role="status">{message}</p>}{error && <ErrorState message={error} />}</>
 }

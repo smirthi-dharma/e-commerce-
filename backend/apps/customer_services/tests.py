@@ -201,7 +201,7 @@ class CustomerServicesApiTests(APITestCase):
         self.assertEqual(public.data["business_hours"], "Every day, 9:00 AM to 9:00 PM")
         self.assertEqual(public.data["delivery_timeline"], "30 minutes")
         self.client.force_authenticate(self.admin)
-        invalid = self.client.patch("/api/v1/admin/system-settings/", {"delivery_pin_codes": ["625532"]}, format="json")
+        invalid = self.client.patch("/api/v1/admin/system-settings/", {"delivery_pin_codes": ["invalid"]}, format="json")
         self.assertEqual(invalid.status_code, 400)
         invalid_timeline = self.client.patch("/api/v1/admin/system-settings/", {"delivery_timeline": "24-6 hours"}, format="json")
         self.assertEqual(invalid_timeline.status_code, 400)
