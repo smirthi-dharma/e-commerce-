@@ -339,6 +339,7 @@ class PaymentTransaction(models.Model):
     class Method(models.TextChoices):
         COD = "cod", "Cash on Delivery"
         ONLINE = "online", "Online"
+        IN_STORE = "in_store", "Shop billing system"
 
     order = models.ForeignKey("orders.Order", related_name="payment_transactions", on_delete=models.PROTECT)
     method = models.CharField(max_length=10, choices=Method.choices, default=Method.COD)

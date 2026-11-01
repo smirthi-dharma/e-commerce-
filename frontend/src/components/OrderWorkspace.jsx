@@ -130,6 +130,7 @@ export default function OrderWorkspace({ admin = false }) {
         <div>
           <span className="eyebrow">{admin ? 'ORDER MANAGEMENT' : 'YOUR ORDER'}</span>
           <h1>{order.order_number}</h1>
+          {order.source === 'in_store' && <p>In-store purchase · Bill {order.bill_number} · {order.purchase_date}</p>}
           <p>{orderDate(order.created_at)}</p>
         </div>
         <button type="button" className="button secondary small" onClick={refresh} disabled={busy}>
@@ -373,8 +374,8 @@ export default function OrderWorkspace({ admin = false }) {
                 <strong>{orderMoney(order.wallet_amount)}</strong>
               </div>
               <div className="order-bill-line">
-                <span>COD portion</span>
-                <strong>{orderMoney(order.amount_due)}</strong>
+                <span>{order.source === 'in_store' ? 'Paid at shop' : 'COD portion'}</span>
+                <strong>{orderMoney(order.source === 'in_store' ? order.total : order.amount_due)}</strong>
               </div>
               <p className="order-muted">
                 Payment: {order.payment_status.replaceAll('_', ' ')}

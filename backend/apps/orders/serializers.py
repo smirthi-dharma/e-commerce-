@@ -1,3 +1,4 @@
+from decimal import Decimal
 from rest_framework import serializers
 from django.utils import timezone
 from .models import Order, OrderItem, OrderStatusEvent
@@ -79,6 +80,8 @@ class OrderSerializer(serializers.ModelSerializer):
         )
 
     def get_amount_due(self, obj):
+        if obj.source == "in_store":
+            return "0.00"
         return str(obj.total - obj.wallet_amount)
 
     items = OrderItemSerializer(many=True, read_only=True)
@@ -88,6 +91,9 @@ class OrderSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "order_number",
+            "source",
+            "bill_number",
+            "purchase_date",
             "status",
             "status_version",
             "estimated_delivery_at",
@@ -117,7 +123,7 @@ class OrderSerializer(serializers.ModelSerializer):
 
 class AdminOrderSerializer(OrderSerializer):
     class Meta(OrderSerializer.Meta):
-        fields = OrderSerializer.Meta.fields + ["private_note"]
+        fields = OrderSerializer.Meta.fields + ["private_note", "customer_id"]
 
 
 class OrderChangeSerializer(serializers.Serializer):
@@ -166,4 +172,39 @@ class CreateOrderSerializer(serializers.Serializer):
                 raise serializers.ValidationError(
                     {field: "This field cannot be blank."}
                 )
+        return attrs
+
+class InStoreCustomerSerializer(serializers.Serializer):
+    full_name = serializers.CharField(max_length=150)
+    email = serializers.EmailField()
+    phone = serializers.CharField(max_length=20)
+
+    def validate_email(self, value):
+        from apps.accounts.serializers import RegistrationSerializer
+        return RegistrationSerializer().validate_email(value)
+
+    def validate_phone(self, value):
+        from apps.accounts.serializers import RegistrationSerializer
+        return RegistrationSerializer().validate_phone(value)
+
+
+class InStorePurchaseSerializer(serializers.Serializer):
+    customer_id = serializers.IntegerField(min_value=1, required=False)
+    customer = InStoreCustomerSerializer(required=False)
+    bill_number = serializers.RegexField(r"^[A-Za-z0-9][A-Za-z0-9/_.-]*$", max_length=80)
+    purchase_date = serializers.DateField()
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal('0.01'))
+
+    def validate_bill_number(self, value):
+        return value.upper()
+
+    def validate_purchase_date(self, value):
+        from django.utils import timezone
+        if value > timezone.localdate():
+            raise serializers.ValidationError("Purchase date cannot be in the future.")
+        return value
+
+    def validate(self, attrs):
+        if ('customer_id' in attrs) == ('customer' in attrs):
+            raise serializers.ValidationError("Select a customer ID or create a customer.")
         return attrs

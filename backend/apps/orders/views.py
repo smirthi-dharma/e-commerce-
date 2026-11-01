@@ -109,9 +109,25 @@ class AdminOrderViewSet(
     queryset = order_queryset()
     serializer_class = AdminOrderSerializer
     permission_classes = [IsStoreAdmin]
-    filterset_fields = ["status"]
-    search_fields = ["order_number", "customer__email", "customer_name"]
+    filterset_fields = ["status", "source"]
+    search_fields = ["order_number", "customer__email", "customer_name", "bill_number"]
     http_method_names = ["get", "post", "patch", "head", "options"]
+
+    @action(detail=False, methods=["get"], url_path="in-store-customer")
+    def in_store_customer(self, request):
+        from apps.accounts.models import User
+        from apps.accounts.serializers import UserSerializer
+        from rest_framework import serializers
+        field = serializers.IntegerField(min_value=1)
+        customer_id = field.run_validation(request.query_params.get("customer_id"))
+        customer = get_object_or_404(User, pk=customer_id, role="customer", is_active=True)
+        return Response(UserSerializer(customer).data)
+
+    @action(detail=False, methods=["post"], url_path="in-store")
+    def in_store(self, request):
+        from .services import record_in_store_purchase
+        order = record_in_store_purchase(actor=request.user, payload=request.data)
+        return Response(self.get_serializer(order).data, status=status.HTTP_201_CREATED)
 
     @transaction.atomic
     def partial_update(self, request, *args, **kwargs):

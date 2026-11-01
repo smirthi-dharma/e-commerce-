@@ -1,3 +1,4 @@
+import InStorePurchaseEntry from '../components/InStorePurchaseEntry'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import api, { errorMessage } from '../services/api'
@@ -40,6 +41,7 @@ export default function AdminOrders() {
     <section className="wrap section admin-page admin-orders-page">
       <span className="eyebrow">STORE MANAGEMENT</span>
       <h1>Orders</h1>
+      <InStorePurchaseEntry onSaved={() => { setPage(1); setFilters(value => ({ ...value })) }} />
       <form
         className="admin-list-filters"
         onSubmit={(event) => {
@@ -107,6 +109,7 @@ export default function AdminOrders() {
                 <span className={`status status-${order.status}`}>{orderLabels[order.status]}</span>
               </div>
               <p className="admin-order-lines">
+                {order.source === 'in_store' && `In-store · Bill ${order.bill_number} · ${order.purchase_date}`}
                 {order.items
                   .slice(0, 2)
                   .map((item) => `${item.product_name} × ${item.quantity}`)
