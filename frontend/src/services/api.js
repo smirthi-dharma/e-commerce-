@@ -39,7 +39,15 @@ api.interceptors.response.use((response) => {
 
 export function errorMessage(error) {
   const data = error?.response?.data
-  if (typeof data === 'string') return data
+  if (typeof data === 'string') {
+    // Server crashes and gateway errors return an HTML page; never show markup to shoppers.
+    if (/^\s*<(!doctype|html)/i.test(data)) {
+      return error?.response?.status >= 500
+        ? 'The store is having trouble right now. Please try again in a moment.'
+        : 'Something went wrong. Please try again.'
+    }
+    return data
+  }
   if (data?.detail) return data.detail
   if (data && typeof data === 'object') {
     const first = Object.values(data)[0]
