@@ -48,8 +48,8 @@ Never drop or rename a column in the same release that stops using it. For a ren
 
 1. Add the new column (additive migration, applied before merge).
 2. Release code that writes both columns and copies existing data across.
-3. Release code that reads only the new column.
-4. In a later release, remove the old column after confirming no deployment still uses it.
+3. Release code that removes every application reference to the old column: reads, dual writes and the Django model field. Make the old column nullable beforehand (additive step in release 2 or earlier) so inserts that omit it still succeed. Keep the physical column in Neon.
+4. After release 3 is deployed and verified, drop the old column in a later release. Dropping it earlier means rolling back to release 2 or 3 could select or write a missing column and return 500s.
 
 ## Stage, check and release
 
