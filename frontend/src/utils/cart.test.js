@@ -23,3 +23,19 @@ describe('saved cart normalization', () => {
     expect(normalizeCart([{ id: 1, price: 10, quantity: 120 }])[0].quantity).toBe(99)
   })
 })
+
+describe('wholesale pricing', () => {
+  const product = { price: 100, wholesale_price: '80.00', wholesale_min_quantity: 10 }
+  it('switches to the wholesale rate at the minimum quantity', async () => {
+    const { unitPrice, lineTotal } = await import('./cart')
+    expect(unitPrice(product, 9)).toBe(100)
+    expect(unitPrice(product, 10)).toBe(80)
+    expect(lineTotal({ ...product, quantity: 10 })).toBe(800)
+  })
+  it('ignores incomplete or invalid tiers', async () => {
+    const { wholesaleTier } = await import('./cart')
+    expect(wholesaleTier({ price: 100, wholesale_price: '80.00', wholesale_min_quantity: null })).toBeNull()
+    expect(wholesaleTier({ price: 100, wholesale_price: '120.00', wholesale_min_quantity: 5 })).toBeNull()
+    expect(wholesaleTier({ price: 100, wholesale_price: null, wholesale_min_quantity: 5 })).toBeNull()
+  })
+})

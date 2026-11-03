@@ -1,4 +1,4 @@
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 class Category(models.Model):
@@ -39,6 +39,7 @@ class Product(models.Model):
     image_is_illustration = models.BooleanField(default=False)
     price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
     wholesale_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    wholesale_min_quantity = models.PositiveSmallIntegerField(null=True, blank=True, validators=[MinValueValidator(2), MaxValueValidator(99)])
     mrp = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
     mrp_is_sample = models.BooleanField(default=False)
     stock = models.PositiveIntegerField(default=0)
@@ -55,3 +56,9 @@ class Product(models.Model):
 
     def __str__(self):
         return self.name
+
+    def unit_price_for(self, quantity):
+        """Per-unit price at `quantity`: the wholesale rate once the admin-set threshold is reached."""
+        if self.wholesale_price is not None and self.wholesale_min_quantity and quantity >= self.wholesale_min_quantity:
+            return self.wholesale_price
+        return self.price

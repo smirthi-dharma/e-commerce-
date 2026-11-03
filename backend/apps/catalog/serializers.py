@@ -43,13 +43,16 @@ class ProductSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Product
-        fields = ["id", "name", "slug", "sku", "description", "pack_size", "price", "regular_price", "mrp", "mrp_is_sample", "badge", "display_badge", "image_is_illustration", "stock", "in_stock", "image_url", "is_active", "is_featured", "category", "category_name", "brand", "variant_group", "search_keywords", "unit_price_label", "ingredients", "nutrition", "storage_instructions", "gallery", "variants"]
+        fields = ["id", "name", "slug", "sku", "description", "pack_size", "price", "wholesale_price", "wholesale_min_quantity", "regular_price", "mrp", "mrp_is_sample", "badge", "display_badge", "image_is_illustration", "stock", "in_stock", "image_url", "is_active", "is_featured", "category", "category_name", "brand", "variant_group", "search_keywords", "unit_price_label", "ingredients", "nutrition", "storage_instructions", "gallery", "variants"]
 
     def validate(self, attrs):
         price = attrs.get("price", getattr(self.instance, "price", None))
         mrp = attrs.get("mrp", getattr(self.instance, "mrp", None))
         if mrp is not None and price is not None and mrp < price:
             raise serializers.ValidationError({"mrp": "MRP must be greater than or equal to the selling price."})
+        wholesale = attrs.get("wholesale_price", getattr(self.instance, "wholesale_price", None))
+        if wholesale is not None and price is not None and wholesale >= price:
+            raise serializers.ValidationError({"wholesale_price": "Wholesale price must be lower than the retail price."})
         regular = attrs.get("regular_price", getattr(self.instance, "regular_price", None))
         if regular is not None and price is not None and regular < price:
             raise serializers.ValidationError({"regular_price": "Previous selling price must be at least the current price; clear it when ending an offer."})
@@ -98,7 +101,7 @@ class AdminProductSerializer(ProductSerializer):
     remove_image = serializers.BooleanField(required=False, write_only=True)
 
     class Meta(ProductSerializer.Meta):
-        fields = ProductSerializer.Meta.fields + ["barcode", "low_stock_threshold", "image", "remove_image", "wholesale_price", "best_before"]
+        fields = ProductSerializer.Meta.fields + ["barcode", "low_stock_threshold", "image", "remove_image", "best_before"]
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
