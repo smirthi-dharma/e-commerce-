@@ -26,6 +26,20 @@ Do not upload a local SQLite database or sample inventory. Vercel function stora
 
 For Neon migrations, temporarily use `DATABASE_URL_UNPOOLED` as `DATABASE_URL` in the migration process. New installations start empty; create the administrator with `python manage.py createsuperuser` using a private terminal prompt. Never commit database credentials or administrator passwords.
 
+## Release gate for schema changes
+
+Vercel deploys `main` to production automatically, but migrations are manual. Merging a PR that contains a migration therefore breaks every query touching the new column until the migration is applied (PR #17 caused a products 500 this way). `/api/health/` stays green because it does not query the database.
+
+For any PR that adds a migration:
+
+1. Back up the Neon `main` branch (create a Neon branch or snapshot).
+2. Apply the migration to Neon before merging, using `DATABASE_URL_UNPOOLED`. Keep the change additive (new nullable column or table) so the old code keeps working against the new schema.
+3. Merge. Vercel builds the production deployment.
+4. Run `node scripts/verify-deployment.mjs <deployment-url>` and confirm the products and categories checks pass. These are the checks that exercise the database.
+5. If products return 500, roll back to the previous deployment first, then fix the schema.
+
+Destructive changes (dropping or renaming columns) need a two-step release: ship code that stops using the column, then migrate in a later release.
+
 ## Stage, check and release
 
 Deploy the PR branch as a preview, or stage a production build with `vercel deploy --prod --skip-domain` from the repository root. Verify the exact deployment before promoting it:
