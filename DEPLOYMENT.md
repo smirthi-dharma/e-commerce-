@@ -42,14 +42,14 @@ For any PR that adds a migration:
 
 ## Rollback and destructive changes
 
-Rolling back a Vercel deployment does not roll back the database. The rollback target must work with the schema already in Neon, so only roll back to a deployment built before an additive migration, never before a destructive one.
+Rolling back a Vercel deployment does not roll back the database. Schema compatibility is the only rule: restore a deployment only if its code works with the schema currently in Neon. A deployment built before a destructive migration is safe to restore only if it no longer references the dropped column (see release 3 below); otherwise it will return 500s.
 
 Never drop or rename a column in the same release that stops using it. For a rename, use separate releases:
 
 1. Add the new column (additive migration, applied before merge).
 2. Release code that writes both columns and copies existing data across.
-3. Release code that removes every application reference to the old column: reads, dual writes and the Django model field. Make the old column nullable beforehand (additive step in release 2 or earlier) so inserts that omit it still succeed. Keep the physical column in Neon.
-4. After release 3 is deployed and verified, drop the old column in a later release. Dropping it earlier means rolling back to release 2 or 3 could select or write a missing column and return 500s.
+3. Release code that removes every application reference to the old column: reads, dual writes and the Django model field. Make the old column nullable beforehand (additive step in release 2 or earlier) so inserts that omit it still succeed. Keep the physical column in Neon: in the migration, wrap `RemoveField` in `SeparateDatabaseAndState` with it in `state_operations` and no `database_operations`, because a plain `RemoveField` drops the column.
+4. After release 3 is deployed and verified, drop the physical column in a later release with a separate migration (`RunSQL` with `ALTER TABLE ... DROP COLUMN`; the model state no longer has the field). Release 3 stays a compatible rollback target because it never references the column. Dropping the column any earlier lets a rollback to release 2 select or write a missing column and return 500s.
 
 ## Stage, check and release
 
