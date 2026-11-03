@@ -26,6 +26,31 @@ Do not upload a local SQLite database or sample inventory. Vercel function stora
 
 For Neon migrations, temporarily use `DATABASE_URL_UNPOOLED` as `DATABASE_URL` in the migration process. New installations start empty; create the administrator with `python manage.py createsuperuser` using a private terminal prompt. Never commit database credentials or administrator passwords.
 
+## Release gate for schema changes
+
+Vercel deploys `main` to production automatically, but migrations are manual. Merging a PR that contains a migration therefore breaks every query touching the new column until the migration is applied (PR #17 caused a products 500 this way). `/api/health/` stays green because it does not query the database.
+
+For any PR that adds a migration:
+
+1. Back up the Neon `main` branch (create a Neon branch or snapshot) and record its link in the PR.
+2. Use a clean checkout of the exact reviewed PR commit (`git status` clean, `git rev-parse HEAD` matches the PR head) that is up to date with `main`. Never migrate from a working copy with other local migrations.
+3. Run `python manage.py migrate --plan` against Neon (`DATABASE_URL_UNPOOLED`) and confirm it lists only the PR's migrations. Then apply it with `python manage.py migrate`. If the migration files or their dependencies change before merge (including after rebasing onto `main`), recheck the plan.
+4. Keep the change additive (new nullable column or table) so the previous deployment still works against the new schema. Record the plan output and backup in the PR.
+5. Merge. Vercel builds the production deployment.
+6. Run `node scripts/verify-deployment.mjs <deployment-url>` (needs no database credentials). The products and categories checks exercise the database.
+7. If products return 500, roll back to the last deployment that works with the schema now in Neon, then fix forward.
+
+## Rollback and destructive changes
+
+Rolling back a Vercel deployment does not roll back the database. Schema compatibility is the only rule: restore a deployment only if its code works with the schema currently in Neon. A deployment built before a destructive migration is safe to restore only if it no longer references the dropped column (see release 3 below); otherwise it will return 500s.
+
+Never drop or rename a column in the same release that stops using it. For a rename, use separate releases:
+
+1. Add the new column (additive migration, applied before merge).
+2. Release code that writes both columns and copies existing data across.
+3. Release code that removes every application reference to the old column: reads, dual writes and the Django model field. Make the old column nullable beforehand (additive step in release 2 or earlier) so inserts that omit it still succeed. Keep the physical column in Neon: in the migration, wrap `RemoveField` in `SeparateDatabaseAndState` with it in `state_operations` and no `database_operations`, because a plain `RemoveField` drops the column.
+4. After release 3 is deployed and verified, drop the physical column in a later release with a separate migration (`RunSQL` with `ALTER TABLE ... DROP COLUMN`; the model state no longer has the field). Release 3 stays a compatible rollback target because it never references the column. Dropping the column any earlier lets a rollback to release 2 select or write a missing column and return 500s.
+
 ## Stage, check and release
 
 Deploy the PR branch as a preview, or stage a production build with `vercel deploy --prod --skip-domain` from the repository root. Verify the exact deployment before promoting it:
