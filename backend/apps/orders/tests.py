@@ -49,6 +49,21 @@ class StoreWorkflowTests(TestCase):
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock, 3)
 
+    def test_wholesale_price_applies_server_side_at_threshold(self):
+        self.product.wholesale_price = Decimal("500.00")
+        self.product.wholesale_min_quantity = 3
+        self.product.stock = 10
+        self.product.save()
+        customer = self.create_customer("wholesale-buyer@example.com", "9876543299")
+        self.client.force_authenticate(customer)
+        def order(quantity):
+            return self.client.post("/api/v1/orders/", {"customer_name": "Buyer", "phone": customer.phone, "address": "1 Market Road", "delivery_pin_code": "625531", "payment_method": "cod", "items": [{"product_id": self.product.pk, "quantity": quantity, "price": "1.00"}]}, format="json")
+        below, at = order(2), order(3)
+        self.assertEqual((below.status_code, at.status_code), (201, 201))
+        self.assertEqual(Decimal(below.data["subtotal"]), Decimal("1200.00"))
+        self.assertEqual(Decimal(at.data["subtotal"]), Decimal("1500.00"))
+        self.assertEqual(Order.objects.get(pk=at.data["id"]).items.get().unit_price, Decimal("500.00"))
+
     def test_checkout_rejects_inactive_products_categories_and_zero_stock(self):
         customer = self.create_customer("visibility-buyer@example.com", "9876543212")
         self.client.force_authenticate(customer)

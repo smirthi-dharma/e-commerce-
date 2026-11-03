@@ -6,6 +6,7 @@ import { useCart } from '../context/CartContext'
 import { money } from './StorefrontTools'
 import { productImageSource } from '../utils/catalogueArtwork'
 import { deliveryQuote } from '../utils/delivery'
+import { wholesaleTier } from '../utils/cart'
 
 export function Loading({ label = 'Loading your shop…' }) {
   return <div className="state-card"><LoaderCircle className="spin" size={25} aria-hidden="true" /><span>{label}</span></div>
@@ -24,6 +25,20 @@ export function ProductPrice({ product }) {
     <strong>{format(price)}</strong>
     {mrp > price && <s aria-label={`${product.mrp_is_sample || !product.mrp ? 'Previous price' : 'MRP'} ${format(mrp)}`}>{format(mrp)}</s>}
     {discount > 0 && <span className="price-discount"><span aria-hidden="true">·</span><span className="product-savings">{discount}% OFF</span></span>}
+  </div>
+}
+
+export function WholesaleNudge({ product, quantity = 0, compact = false }) {
+  const tier = wholesaleTier(product)
+  if (!tier) return null
+  const rupees = value => `₹${Number(value.toFixed(2))}`
+  const unlocked = quantity >= tier.minQuantity
+  const remaining = tier.minQuantity - quantity
+  if (unlocked) return <div className="wholesale-nudge is-unlocked" role="status"><strong>Wholesale price unlocked: {rupees(tier.price)} each</strong><small>You save {rupees(tier.saving * quantity)} on this item.</small></div>
+  return <div className={`wholesale-nudge${compact ? ' is-compact' : ''}`} role="status">
+    <strong>{quantity ? `Add ${remaining} more to get ${rupees(tier.price)} each` : `Buy ${tier.minQuantity}+ at ${rupees(tier.price)} each`}</strong>
+    <small>Wholesale rate · save {rupees(tier.saving)} per unit</small>
+    {quantity > 0 && <span className="wholesale-progress" aria-hidden="true"><span style={{ width: `${Math.min(100, quantity / tier.minQuantity * 100)}%` }} /></span>}
   </div>
 }
 
@@ -59,6 +74,7 @@ export function ProductCard({ product }) {
       <span className="product-pack">{product.pack_size || 'Per item'}</span>
       {product.brand && <small>{product.brand}</small>}
       {product.unit_price_label && <small>{product.unit_price_label}</small>}
+      <WholesaleNudge product={product} quantity={quantity} compact />
       <div className="product-buy"><ProductPrice product={product} />
         {quantity ? <div className="quantity-control compact cart-stepper"><button type="button" aria-label={`Decrease ${product.name} quantity`} onClick={() => setQuantity(product.id, quantity - 1)}><Minus size={16} /></button><span aria-live="polite">{quantity}</span><button type="button" aria-label={`Increase ${product.name} quantity`} disabled={unavailable || quantity >= Math.min(product.stock, 99)} onClick={() => { add(product); recordActivity('add_to_cart', product.id) }}><Plus size={16} /></button></div> : <button className="quick-add" aria-label={`Add ${product.name} to cart`} disabled={unavailable} onClick={() => { add(product); recordActivity('add_to_cart', product.id) }}>{unavailable ? 'Sold out' : 'ADD'}</button>}
       </div>

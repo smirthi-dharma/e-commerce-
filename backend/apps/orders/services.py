@@ -84,9 +84,10 @@ def place_order(*, customer, payload, quote_only=False):
             )
         if product.stock < quantity:
             raise ValidationError({"items": f"Not enough stock for {product.name}."})
-        amount = product.price * quantity
+        unit_price = product.unit_price_for(quantity)
+        amount = unit_price * quantity
         subtotal += amount
-        order_lines.append((product, quantity, amount))
+        order_lines.append((product, quantity, amount, unit_price))
     from apps.customer_services.models import (
         Coupon,
         CouponRedemption,
@@ -152,7 +153,7 @@ def place_order(*, customer, payload, quote_only=False):
         product_restrictions = set(coupon.products.values_list("pk", flat=True))
         category_restrictions = set(coupon.categories.values_list("pk", flat=True))
         restrictions = product_restrictions or category_restrictions
-        for product, quantity, amount in order_lines:
+        for product, quantity, amount, _unit_price in order_lines:
             if (
                 not restrictions
                 or product.pk in product_restrictions
@@ -230,7 +231,7 @@ def place_order(*, customer, payload, quote_only=False):
         delivery_fee=delivery_fee,
         total=total,
     )
-    for product, quantity, amount in order_lines:
+    for product, quantity, amount, unit_price in order_lines:
         product.stock -= quantity
         product.save(update_fields=["stock"])
         OrderItem.objects.create(
@@ -239,7 +240,7 @@ def place_order(*, customer, payload, quote_only=False):
             category_snapshot=product.category,
             product_name=product.name,
             sku=product.sku,
-            unit_price=product.price,
+            unit_price=unit_price,
             quantity=quantity,
             line_total=amount,
         )

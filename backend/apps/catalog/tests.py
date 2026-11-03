@@ -288,8 +288,24 @@ class WholesalePriceTests(TestCase):
             self.assertEqual(response.status_code, 400)
             self.assertIn("wholesale_price", response.data)
         self.client.force_authenticate(user=None)
-        self.assertNotIn("wholesale_price", self.client.get(f"/api/v1/products/{product.pk}/").data)
+        self.assertIsNone(self.client.get(f"/api/v1/products/{product.pk}/").data["wholesale_price"])
         self.assertIn(self.client.patch(url, {"wholesale_price": "1.00"}, format="json").status_code, [401, 403])
+
+    def test_wholesale_tier_rules_and_public_exposure(self):
+        product = Product.objects.create(category=self.category, name="Rice", slug="rice", sku="RICE", price="100.00", stock=50)
+        url = f"/api/v1/admin/products/{product.pk}/"
+        self.assertEqual(self.client.patch(url, {"wholesale_price": "100.00"}, format="multipart").status_code, 400)
+        self.assertEqual(self.client.patch(url, {"wholesale_min_quantity": "1"}, format="multipart").status_code, 400)
+        response = self.client.patch(url, {"wholesale_price": "80.00", "wholesale_min_quantity": "10"}, format="multipart")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.client.force_authenticate(user=None)
+        public = self.client.get(f"/api/v1/products/{product.pk}/").data
+        self.assertEqual((public["wholesale_price"], public["wholesale_min_quantity"]), ("80.00", 10))
+        product.refresh_from_db()
+        self.assertEqual(product.unit_price_for(9), Decimal("100.00"))
+        self.assertEqual(product.unit_price_for(10), Decimal("80.00"))
+        product.wholesale_min_quantity = None
+        self.assertEqual(product.unit_price_for(99), Decimal("100.00"))
 
 
 class DashboardCustomRangeTests(TestCase):

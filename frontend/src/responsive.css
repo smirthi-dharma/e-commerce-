@@ -140,3 +140,13 @@
 .quick-store .price-discount { display:inline-flex; align-items:center; gap:7px; white-space:nowrap; }
 
 .quick-store .product-buy .product-pricing > strong { font-size:18px; font-weight:800; }
+
+.wholesale-nudge { display:flex; flex-direction:column; gap:2px; margin:6px 0; padding:7px 10px; border:1px dashed #d9822b; border-radius:8px; background:#fff6e8; color:#8a4b00; font-size:12px; line-height:1.35; }
+.wholesale-nudge strong { font-size:12px; color:#8a4b00; }
+.wholesale-nudge small { font-size:11px; color:#a8641a; }
+.wholesale-nudge.is-compact { padding:5px 8px; margin:4px 0; }
+.wholesale-nudge.is-unlocked { border:1px solid #2f8f4e; background:#e9f7ee; color:#1d6a37; }
+.wholesale-nudge.is-unlocked strong, .wholesale-nudge.is-unlocked small { color:#1d6a37; }
+.wholesale-progress { display:block; height:5px; margin-top:4px; border-radius:99px; background:#f2d9b5; overflow:hidden; }
+.wholesale-progress > span { display:block; height:100%; border-radius:inherit; background:#d9822b; transition:width .25s ease; }
+.detail-info .wholesale-nudge { font-size:14px; padding:10px 14px; } .detail-info .wholesale-nudge strong { font-size:14px; }

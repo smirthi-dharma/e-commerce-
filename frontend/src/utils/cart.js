@@ -23,3 +23,18 @@ export function readSavedCart(storageValue) {
     return []
   }
 }
+
+export function wholesaleTier(product) {
+  const price = Number(product?.price)
+  const wholesale = product?.wholesale_price == null ? NaN : Number(product.wholesale_price)
+  const minQuantity = Number(product?.wholesale_min_quantity)
+  if (!Number.isFinite(price) || !Number.isFinite(wholesale) || !Number.isInteger(minQuantity) || minQuantity < 2 || wholesale >= price) return null
+  return { price: wholesale, minQuantity, saving: price - wholesale }
+}
+
+export function unitPrice(product, quantity = product.quantity) {
+  const tier = wholesaleTier(product)
+  return tier && quantity >= tier.minQuantity ? tier.price : Number(product.price)
+}
+
+export const lineTotal = (item) => unitPrice(item) * item.quantity

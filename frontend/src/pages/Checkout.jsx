@@ -8,6 +8,7 @@ import api, { errorMessage } from '../services/api'
 import PolicyLink from '../components/PolicyLink'
 import { readPin } from '../components/StorefrontTools'
 import { deliveryQuote } from '../utils/delivery'
+import { lineTotal } from '../utils/cart'
 
 const defaultSettings = {
   store_name: 'Pandiyan Stores',
@@ -173,7 +174,7 @@ export default function Checkout() {
       </form>
       <aside className="summary-card">
         <h2>Your order</h2>
-        {items.map((item) => <div className="summary-line" key={item.id}><span>{item.name} × {item.quantity}<ProductPrice product={item} /></span><strong>₹{(Number(item.price) * item.quantity).toFixed(2)}</strong></div>)}
+        {items.map((item) => <div className="summary-line" key={item.id}><span>{item.name} × {item.quantity}<ProductPrice product={item} /></span><strong>₹{(lineTotal(item)).toFixed(2)}</strong></div>)}
         {quote ? <><div className="summary-line"><span>Items</span><strong>₹{Number(quote.subtotal).toFixed(2)}</strong></div><div className="summary-line"><span>Coupon savings</span><strong>−₹{Number(quote.discount_amount).toFixed(2)}</strong></div><div className="summary-line"><span>Delivery</span><strong>₹{Number(quote.delivery_fee).toFixed(2)}</strong></div><div className="summary-total"><span>Total</span><strong>₹{Number(quote.total).toFixed(2)}</strong></div><p>Estimated delivery: {quote.estimated_minutes_min}–{quote.estimated_minutes_max} minutes</p>{quote.availability_message && <p role="status">{quote.availability_message}</p>}</> : <p role="status">{quoteError || 'Choose a delivery PIN to get your exact order total.'}</p>}{quoteError && <button type="button" className="button secondary" onClick={() => setQuoteRetry(value => value + 1)}>Refresh quote</button>}
         {useWallet && <><div className="summary-line"><span>Estimated wallet payment</span><strong>−₹{walletApplied.toFixed(2)}</strong></div><div className="summary-line"><span>Estimated cash on delivery</span><strong>₹{cashDue.toFixed(2)}</strong></div><p className="fine-print">Available wallet funds are applied after coupon and delivery calculations. Your confirmed order shows the final split.</p></>}
 

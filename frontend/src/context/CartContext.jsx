@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useState } from 'react'
-import { readSavedCart } from '../utils/cart'
+import { lineTotal, readSavedCart } from '../utils/cart'
 import useSavedBasket from '../hooks/useSavedBasket'
 
 const CartContext = createContext(null)
@@ -37,7 +37,7 @@ export function CartProvider({ children }) {
   const remove = (id) => update(current => current.filter(item => item.id !== id))
   const clear = () => update([])
   const count = items.reduce((total, item) => total + item.quantity, 0)
-  const subtotal = items.reduce((total, item) => total + Number(item.price) * item.quantity, 0)
+  const subtotal = items.reduce((total, item) => total + lineTotal(item), 0)
   const value = { items, add, setQuantity, remove, clear, count, subtotal, syncProduct, syncMessage, reloadSavedCart }
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>
 }
