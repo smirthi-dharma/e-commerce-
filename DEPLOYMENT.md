@@ -32,13 +32,24 @@ Vercel deploys `main` to production automatically, but migrations are manual. Me
 
 For any PR that adds a migration:
 
-1. Back up the Neon `main` branch (create a Neon branch or snapshot).
-2. Apply the migration to Neon before merging, using `DATABASE_URL_UNPOOLED`. Keep the change additive (new nullable column or table) so the old code keeps working against the new schema.
-3. Merge. Vercel builds the production deployment.
-4. Run `node scripts/verify-deployment.mjs <deployment-url>` and confirm the products and categories checks pass. These are the checks that exercise the database.
-5. If products return 500, roll back to the previous deployment first, then fix the schema.
+1. Back up the Neon `main` branch (create a Neon branch or snapshot) and record its link in the PR.
+2. Use a clean checkout of the exact reviewed PR commit (`git status` clean, `git rev-parse HEAD` matches the PR head) that is up to date with `main`. Never migrate from a working copy with other local migrations.
+3. Run `python manage.py migrate --plan` against Neon (`DATABASE_URL_UNPOOLED`) and confirm it lists only the PR's migrations. Then apply it with `python manage.py migrate`. If the migration files or their dependencies change before merge (including after rebasing onto `main`), recheck the plan.
+4. Keep the change additive (new nullable column or table) so the previous deployment still works against the new schema. Record the plan output and backup in the PR.
+5. Merge. Vercel builds the production deployment.
+6. Run `node scripts/verify-deployment.mjs <deployment-url>` (needs no database credentials). The products and categories checks exercise the database.
+7. If products return 500, roll back to the last deployment that works with the schema now in Neon, then fix forward.
 
-Destructive changes (dropping or renaming columns) need a two-step release: ship code that stops using the column, then migrate in a later release.
+## Rollback and destructive changes
+
+Rolling back a Vercel deployment does not roll back the database. The rollback target must work with the schema already in Neon, so only roll back to a deployment built before an additive migration, never before a destructive one.
+
+Never drop or rename a column in the same release that stops using it. For a rename, use separate releases:
+
+1. Add the new column (additive migration, applied before merge).
+2. Release code that writes both columns and copies existing data across.
+3. Release code that reads only the new column.
+4. In a later release, remove the old column after confirming no deployment still uses it.
 
 ## Stage, check and release
 
